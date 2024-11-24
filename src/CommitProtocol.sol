@@ -121,7 +121,6 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     error InvalidWinner(address winner);
     error InvalidTokenContract(address token);
     error InvalidFeeConfiguration(uint total);
-    error ContractPaused();
     error JoiningPeriodEnded(uint currentTime, uint deadline);
     error DirectDepositsNotAllowed();
     error DuplicateWinner(address winner);
@@ -233,7 +232,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
 
         uint totalAmount = commitment.stakeAmount;
         
-        // Handle join fee if set
+        // Handle creator fee if set
         uint creatorFee = commitment.creatorFee;
         if (creatorFee > 0) {
             totalAmount += creatorFee;
@@ -262,7 +261,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     /// @param _id The ID of the commitment to resolve
     /// @param _winners The addresses of the participants who succeeded
     /// @dev Only creator can resolve, must be after fulfillment deadline
-    function resolveCommitment(uint _id, address[] calldata _winners) external nonReentrant whenNotPaused {
+    function resolveCommitment(uint _id, address[] memory _winners) public nonReentrant whenNotPaused {
         Commitment storage commitment = commitments[_id];
         require(msg.sender == commitment.creator, UnauthorizedAccess(msg.sender));
         require(commitment.status == CommitmentStatus.Active, InvalidState(commitment.status));
@@ -314,7 +313,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     /// @param _id The ID of the commitment to cancel
     /// @dev This calls resolveCommitment internally to handle refunds properly
     /// @dev Requires exactly 1 participant (the creator) since creator auto-joins on creation
-    function cancelCommitment(uint _id) external nonReentrant whenNotPaused {
+    function cancelCommitment(uint _id) external whenNotPaused {
         require(_id < nextCommitmentId, CommitmentNotExists(_id));
 
         Commitment storage commitment = commitments[_id];
@@ -485,6 +484,10 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         emit FeesClaimed(msg.sender, token, amount);
     }
 
+    function getProtocolFees(address token) external view returns (uint) {
+        return protocolFees[token];
+    }
+
     /*//////////////////////////////////////////////////////////////
                             EMERGENCY FUNCTIONS
     //////////////////////////////////////////////////////////////*/
@@ -519,11 +522,15 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     /// @notice Emergency function to pause any function that uses `whenNotPaused`
     function emergencyPauseAll() external onlyOwner {
         _pause();
+
+        emit ContractPaused();
     }
 
     /// @notice Emergency function to unpause all functions blocked on `whenNotPaused`
     function emergencyUnpauseAll() external onlyOwner {
         _unpause();
+
+        emit ContractUnpaused();
     }
 
     /*//////////////////////////////////////////////////////////////
