@@ -1,19 +1,11 @@
-## Foundry
+### Setup
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
-
-Foundry consists of:
-
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
+```
+forge install foundry-rs/forge-std@v1.9.4
+forge install OpenZeppelin/openzeppelin-foundry-upgrades@v0.3.6
+forge install OpenZeppelin/openzeppelin-contracts@v5.1.0
+forge install OpenZeppelin/openzeppelin-contracts-upgradeable@v5.1.0
+```
 
 ### Build
 
