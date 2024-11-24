@@ -103,30 +103,6 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     event ContractUnpaused();
 
     /*//////////////////////////////////////////////////////////////
-                                ERRORS
-    //////////////////////////////////////////////////////////////*/
-
-    error InvalidAddress();
-    error UnauthorizedAccess(address caller);
-    error InvalidState(CommitmentStatus status);
-    error InsufficientBalance(uint available, uint required);
-    error FulfillmentPeriodNotEnded(uint currentTime, uint deadline);
-    error AlreadyJoined();
-    error NoCreatorClaim();
-    error NoRewardsToClaim();
-    error CommitmentNotExists(uint id);
-    error InvalidCreationFee(uint sent, uint required);
-    error TokenNotAllowed(address token);
-    error ETHTransferFailed();
-    error InvalidWinner(address winner);
-    error InvalidTokenContract(address token);
-    error InvalidFeeConfiguration(uint total);
-    error JoiningPeriodEnded(uint currentTime, uint deadline);
-    error DirectDepositsNotAllowed();
-    error DuplicateWinner(address winner);
-    error InvalidJoinFee(uint sent, uint required);
-
-    /*//////////////////////////////////////////////////////////////
                             INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
@@ -142,7 +118,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
         __Pausable_init();
-        require(_protocolFeeAddress != address(0), InvalidAddress());
+        require(_protocolFeeAddress != address(0), "Invalid protocol fee address");
         protocolFeeAddress = _protocolFeeAddress;
     }
 
@@ -166,8 +142,8 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         uint _joinDeadline,
         uint _fulfillmentDeadline
     ) external payable nonReentrant whenNotPaused returns (uint) {
-        require(msg.value == PROTOCOL_CREATE_FEE, InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE));
-        require(allowedTokens.contains(_tokenAddress), TokenNotAllowed(_tokenAddress));
+        require(msg.value == PROTOCOL_CREATE_FEE, "Invalid creation fee amount");
+        require(allowedTokens.contains(_tokenAddress), "Token not allowed for commitments");
         require(bytes(_description).length <= MAX_DESCRIPTION_LENGTH, "Description too long");
         require(_joinDeadline > block.timestamp, "Join Deadline Too Early");
         require(
@@ -217,16 +193,13 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     /// @notice Allows joining an active commitment
     /// @param _id The ID of the commitment to join
     function joinCommitment(uint _id) external payable nonReentrant whenNotPaused {
-        require(_id < nextCommitmentId, CommitmentNotExists(_id));
-        require(msg.value == PROTOCOL_JOIN_FEE, InvalidJoinFee(msg.value, PROTOCOL_JOIN_FEE));
+        require(_id < nextCommitmentId, "Commitment does not exist");
+        require(msg.value == PROTOCOL_JOIN_FEE, "Invalid join fee amount");
 
         Commitment storage commitment = commitments[_id];
-        require(commitment.status == CommitmentStatus.Active, InvalidState(commitment.status));
-        require(
-            block.timestamp < commitment.joinDeadline,
-            JoiningPeriodEnded(block.timestamp, commitment.joinDeadline)
-        );
-        require(!commitment.participants.contains(msg.sender), AlreadyJoined());
+        require(commitment.status == CommitmentStatus.Active, "Commitment not active");
+        require(block.timestamp < commitment.joinDeadline, "Commitment join deadline has passed");
+        require(!commitment.participants.contains(msg.sender), "Already joined commitment");
 
         protocolFees[address(0)] += PROTOCOL_JOIN_FEE;
 
@@ -263,12 +236,9 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     /// @dev Only creator can resolve, must be after fulfillment deadline
     function resolveCommitment(uint _id, address[] memory _winners) public nonReentrant whenNotPaused {
         Commitment storage commitment = commitments[_id];
-        require(msg.sender == commitment.creator, UnauthorizedAccess(msg.sender));
-        require(commitment.status == CommitmentStatus.Active, InvalidState(commitment.status));
-        require(
-            block.timestamp > commitment.fulfillmentDeadline,
-            FulfillmentPeriodNotEnded(block.timestamp, commitment.fulfillmentDeadline)
-        );
+        require(msg.sender == commitment.creator, "Only creator can resolve");
+        require(commitment.status == CommitmentStatus.Active, "Commitment not active");
+        require(block.timestamp > commitment.fulfillmentDeadline, "Fulfillment period not ended");
 
         EnumerableSet.AddressSet storage participants = commitment.participants;
         EnumerableSet.AddressSet storage winners = commitment.winners;
@@ -285,8 +255,8 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
 
         for (uint i = 0; i < winnerCount; i++) {
             address winner = _winners[i];
-            require(participants.contains(winner), InvalidWinner(winner));
-            require(winners.add(winner), DuplicateWinner(winner));
+            require(participants.contains(winner), "Invalid winner address");
+            require(winners.add(winner), "Duplicate winner");
         }
 
         // Process participants
@@ -314,22 +284,22 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     /// @dev This calls resolveCommitment internally to handle refunds properly
     /// @dev Requires exactly 1 participant (the creator) since creator auto-joins on creation
     function cancelCommitment(uint _id) external whenNotPaused {
-        require(_id < nextCommitmentId, CommitmentNotExists(_id));
+        require(_id < nextCommitmentId, "Commitment does not exist");
 
         Commitment storage commitment = commitments[_id];
 
         require(
             msg.sender == commitment.creator ||
             msg.sender == owner(),
-            UnauthorizedAccess(msg.sender)
+            "Only creator or owner can cancel"
         );
         require(
             commitment.status == CommitmentStatus.Active,
-            InvalidState(commitment.status)
+            "Commitment not active"
         );
         require(
             commitment.participants.length() == 1,  // Only creator is present
-            "Others Have Joined"
+            "Cannot cancel after others have joined"
         );
 
         commitment.joinDeadline = 0;
@@ -350,19 +320,19 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
 
         require(
             commitment.status == CommitmentStatus.EmergencyCancelled,
-            InvalidState(commitment.status)
+            "Commitment not emergency cancelled"
         );
         require(
             commitment.participants.contains(msg.sender),
-            UnauthorizedAccess(msg.sender)
+            "Not a participant"
         );
         require(
-            commitment.participantClaimed[msg.sender] == false,
-            NoRewardsToClaim()
+            !commitment.participantClaimed[msg.sender],
+            "Already claimed"
         );
+        require(commitment.stakeAmount > 0, "No rewards to claim");
 
         uint amount = commitment.stakeAmount;
-        require(amount > 0, NoRewardsToClaim());
 
         // Mark as claimed before transfer to prevent reentrancy
         commitment.participantClaimed[msg.sender] = true;
@@ -385,19 +355,19 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
 
         require(
             commitment.status == CommitmentStatus.Resolved,
-            InvalidState(commitment.status)
+            "Commitment not resolved"
         );
         require(
             commitment.winners.contains(msg.sender),
-            UnauthorizedAccess(msg.sender)
+            "Not a winner"
         );
         require(
-            commitment.participantClaimed[msg.sender] == false,
-            NoRewardsToClaim()
-        );
+            !commitment.participantClaimed[msg.sender],
+            "Already claimed"
+        );a
 
         uint amount = commitment.winnerClaim;
-        require(amount > 0, NoRewardsToClaim());
+        require(amount > 0, "No rewards to claim");
 
         // Mark as claimed before transfer to prevent reentrancy
         commitment.participantClaimed[msg.sender] = true;
@@ -413,12 +383,9 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     function claimCreator(uint _id) external nonReentrant whenNotPaused {
         Commitment storage commitment = commitments[_id];
 
-        require(
-            commitment.creator == msg.sender,
-            UnauthorizedAccess(msg.sender)
-        );
+        require(commitment.creator == msg.sender, "Only creator can claim");
         uint amount = commitment.creatorClaim - commitment.creatorClaimed;
-        require(amount > 0, NoCreatorClaim());
+        require(amount > 0, "No creator fees to claim");
 
         // Update how much they have claimed to prevent reclaiming the same funds
         commitment.creatorClaimed += amount;
@@ -451,7 +418,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     /// @notice Updates the protocol fee address
     /// @param _newAddress The new address for protocol fees
     function setProtocolFeeAddress(address _newAddress) external onlyOwner {
-        require(_newAddress != address(0), InvalidAddress());
+        require(_newAddress != address(0), "Invalid protocol fee address");
 
         address oldAddress = protocolFeeAddress;
         protocolFeeAddress = _newAddress;
@@ -467,7 +434,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     function claimProtocolFees(address token) external onlyOwner nonReentrant {
         uint amount = protocolFees[token];
 
-        require(amount > 0, "Nothing to Claim");
+        require(amount > 0, "No fees to claim");
 
         // Clear balance before transfer to prevent reentrancy
         protocolFees[token] = 0;
@@ -475,7 +442,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         if (token == address(0)) {
             // Transfer creation fee in ETH
             (bool sent,) = protocolFeeAddress.call{value: amount}("");
-            require(sent, ETHTransferFailed());
+            require(sent, "ETH transfer failed");
         } else {
             // Transfer accumulated fees
             IERC20(token).safeTransfer(msg.sender, amount);
@@ -500,7 +467,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         require(
             amount > 0 &&
             amount <= balance,
-            InsufficientBalance(balance, amount)
+            "Invalid withdrawal amount"
         );
         token.safeTransfer(msg.sender, amount);
 
@@ -512,7 +479,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     /// @param _id The ID of the commitment to cancel
     function emergencyCancelCommitment(uint _id) external onlyOwner {
         Commitment storage commitment = commitments[_id];
-        require(commitment.status == CommitmentStatus.Active, InvalidState(commitment.status));
+        require(commitment.status == CommitmentStatus.Active, "Commitment not active");
 
         commitment.status = CommitmentStatus.EmergencyCancelled;
 
@@ -650,11 +617,11 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     //////////////////////////////////////////////////////////////*/
 
     function _validateAddress(address addr) internal pure {
-        require(addr != address(0), InvalidAddress());
+        require(addr != address(0), "Invalid address");
     }
 
     function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
-        require(newImplementation != address(0), InvalidAddress());
+        require(newImplementation != address(0), "Invalid implementation address");
     }
 
 
@@ -663,6 +630,6 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     //////////////////////////////////////////////////////////////*/
 
     receive() external payable {
-        require(false, DirectDepositsNotAllowed());
+        require(false, "Direct deposits not allowed");
     }
 }
