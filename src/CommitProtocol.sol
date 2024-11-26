@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -13,7 +13,6 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 /// @notice Enables users to create and participate in commitment-based challenges
 /// @dev Implements stake management, fee distribution, and emergency controls
 contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable, PausableUpgradeable {
-    using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /*//////////////////////////////////////////////////////////////
@@ -106,11 +105,6 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
                             INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        // _disableInitializers();
-    }
-
     /// @notice Initializes the contract with the protocol fee address
     /// @param _protocolFeeAddress The address where protocol fees are sent
     function initialize(address _protocolFeeAddress) public initializer {
@@ -156,7 +150,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         protocolFees[address(0)] += PROTOCOL_CREATE_FEE;
 
         // Transfer stake amount for creator
-        IERC20(_tokenAddress).safeTransferFrom(msg.sender, address(this), _stakeAmount);
+        IERC20(_tokenAddress).transferFrom(msg.sender, address(this), _stakeAmount);
 
         uint commitmentId = nextCommitmentId++;
 
@@ -218,7 +212,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         }
 
         // Transfer total amount in one transaction
-        IERC20(commitment.tokenAddress).safeTransferFrom(
+        IERC20(commitment.tokenAddress).transferFrom(
             msg.sender,
             address(this),
             totalAmount
@@ -337,7 +331,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         // Mark as claimed before transfer to prevent reentrancy
         commitment.participantClaimed[msg.sender] = true;
 
-        IERC20(commitment.tokenAddress).safeTransfer(msg.sender, amount);
+        IERC20(commitment.tokenAddress).transfer(msg.sender, amount);
 
         emit EmergencyStakesReturned(
             _id, 
@@ -364,7 +358,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         require(
             !commitment.participantClaimed[msg.sender],
             "Already claimed"
-        );a
+        );
 
         uint amount = commitment.winnerClaim;
         require(amount > 0, "No rewards to claim");
@@ -372,7 +366,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         // Mark as claimed before transfer to prevent reentrancy
         commitment.participantClaimed[msg.sender] = true;
 
-        IERC20(commitment.tokenAddress).safeTransfer(msg.sender, amount);
+        IERC20(commitment.tokenAddress).transfer(msg.sender, amount);
 
         emit RewardsClaimed(_id, msg.sender, commitment.tokenAddress, amount);
     }
@@ -390,7 +384,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         // Update how much they have claimed to prevent reclaiming the same funds
         commitment.creatorClaimed += amount;
 
-        IERC20(commitment.tokenAddress).safeTransfer(msg.sender, amount);
+        IERC20(commitment.tokenAddress).transfer(msg.sender, amount);
 
         emit CreatorClaimed(_id, msg.sender, commitment.tokenAddress, amount);
     }
@@ -445,7 +439,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
             require(sent, "ETH transfer failed");
         } else {
             // Transfer accumulated fees
-            IERC20(token).safeTransfer(msg.sender, amount);
+            IERC20(token).transfer(msg.sender, amount);
         }
 
         emit FeesClaimed(msg.sender, token, amount);
@@ -469,7 +463,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
             amount <= balance,
             "Invalid withdrawal amount"
         );
-        token.safeTransfer(msg.sender, amount);
+        token.transfer(msg.sender, amount);
 
         emit EmergencyWithdrawal(address(token), amount);
     }

@@ -1,15 +1,16 @@
 [profile.default]
-viaIR = true
 src = "src"
 out = "out"
 libs = ["lib"]
+ast = true
+build_info = true
+extra_output = ["storageLayout"]
+ffi = true
+solc = "0.8.26"
+
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
 [rpc_endpoints]
-base = "${BASE_RPC_URL}"
-# cyber = "${CYBER_RPC_URL}"
+cyber = "https://cyber.alt.technology"
 
-[etherscan]
-base = { key = "${BASESCAN_API_KEY}" }
-# cyber = { key = "${CYBERSCAN_API_KEY}" }
