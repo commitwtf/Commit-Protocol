@@ -6,22 +6,22 @@ import {console} from "../lib/forge-std/src/console.sol";
 import {Upgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 import {CommitProtocol} from "src/CommitProtocol.sol";
 
-contract DeployCommitProtocol is Script {
+contract UpgradeCommitProtocol is Script {
     function run() public {
         // Get protocol fee address from environment
-        address protocolFeeAddress = vm.envAddress("PROTOCOL_FEE_ADDRESS");
+        address proxyAddress = vm.envAddress("PROXY_ADDRESS");
 
         vm.startBroadcast();
 
         // Deploy UUPS Proxy
-        address proxy = Upgrades.deployUUPSProxy(
+        address proxy = Upgrades.upgradeProxy(
+            proxyAddress,
             "CommitProtocol.sol",
-            abi.encodeCall(CommitProtocol.initialize, (protocolFeeAddress))
+            ""
         );
 
         vm.stopBroadcast();
 
-        console.log("CommitProtocol proxy deployed to:", proxy);
-        console.log("Protocol fee address set to:", protocolFeeAddress);
+        console.log("CommitProtocol proxy upgraded");
     }
 }
