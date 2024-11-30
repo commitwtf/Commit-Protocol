@@ -13,4 +13,4 @@ solc = "0.8.26"
 
 [rpc_endpoints]
 cyber = "https://cyber.alt.technology"
-
+anvil = "http://localhost:8545"

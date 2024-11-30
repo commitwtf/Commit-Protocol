@@ -14,11 +14,7 @@ contract UpgradeCommitProtocol is Script {
         vm.startBroadcast();
 
         // Deploy UUPS Proxy
-        address proxy = Upgrades.upgradeProxy(
-            proxyAddress,
-            "CommitProtocol.sol",
-            ""
-        );
+        Upgrades.upgradeProxy(proxyAddress, "CommitProtocol.sol", "");
 
         vm.stopBroadcast();
 
