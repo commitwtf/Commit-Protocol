@@ -25,35 +25,48 @@ contract CommitTest is Test {
         vm.deal(userD, 1 ether);
     }
 
-    receive() external payable { }
+    receive() external payable {}
 
-    function create(address user, uint stakeAmount, uint creatorShare) public returns (uint) {
+    function create(
+        address user,
+        uint stakeAmount,
+        uint creatorShare
+    ) public returns (uint) {
         vm.deal(user, protocol.PROTOCOL_CREATE_FEE());
         vm.startPrank(user);
         token.deal(100);
         token.approve(address(protocol), type(uint256).max);
-        uint id = protocol.createCommitment{value: protocol.PROTOCOL_CREATE_FEE()}(
+        uint id = protocol.createCommitment{
+            value: protocol.PROTOCOL_CREATE_FEE()
+        }(
             address(token), // _tokenAddress,
             stakeAmount, // _stakeAmount,
             creatorShare, // _creatorShare,
             "Test", // _description,
             block.timestamp + 1, // _joinDeadline,
             block.timestamp + 11 // _fulfillmentDeadline
-        ) ;
+        );
         vm.stopPrank();
         return id;
     }
 
-    function join(uint commitmentId, address user, uint stakeAmount, uint joinFee) public {
+    function join(
+        uint commitmentId,
+        address user,
+        uint stakeAmount,
+        uint joinFee
+    ) public {
         vm.startPrank(user);
         token.deal(stakeAmount + joinFee);
         token.approve(address(protocol), type(uint256).max);
-        protocol.joinCommitment{value: protocol.PROTOCOL_JOIN_FEE()}(commitmentId);
+        protocol.joinCommitment{value: protocol.PROTOCOL_JOIN_FEE()}(
+            commitmentId
+        );
         vm.stopPrank();
     }
 
     function resolve(uint commitmentId, address[] memory winners) public {
-        address creator = protocol.getCommitmentCreator(commitmentId);
+        address creator = protocol.getCommitmentDetails(commitmentId).creator;
         vm.startPrank(creator);
         protocol.resolveCommitment(commitmentId, winners);
         vm.stopPrank();
@@ -68,7 +81,6 @@ contract CommitTest is Test {
         join(commitmentId, userB, 100, 5);
     }
 
-
     function test_RewardSingleClaim() public {
         uint commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
@@ -80,10 +92,16 @@ contract CommitTest is Test {
 
         vm.startPrank(userB);
         uint balanceBBefore = token.balanceOf(userB);
-        require(protocol.getCommitmentWinnerClaim(commitmentId) == 99 + 99, "Invalid Reward"); // 99 = stake refund, 99 = earnings
+        require(
+            protocol.getClaims(commitmentId).winnerClaim == 99 + 99,
+            "Invalid Reward"
+        ); // 99 = stake refund, 99 = earnings
         protocol.claimRewards(commitmentId);
         uint balanceBAfter = token.balanceOf(userB);
-        require(balanceBAfter - balanceBBefore == (99 + 99), "Fee not credited");
+        require(
+            balanceBAfter - balanceBBefore == (99 + 99),
+            "Fee not credited"
+        );
         vm.stopPrank();
     }
 
@@ -100,10 +118,16 @@ contract CommitTest is Test {
 
         vm.startPrank(userB);
         uint balanceBBefore = token.balanceOf(userB);
-        require(protocol.getCommitmentWinnerClaim(commitmentId) == 99 + 49, "Invalid Reward");
+        require(
+            protocol.getClaims(commitmentId).winnerClaim == 99 + 49,
+            "Invalid Reward"
+        );
         protocol.claimRewards(commitmentId);
         uint balanceBAfter = token.balanceOf(userB);
-        require(balanceBAfter - balanceBBefore == (99 + 49), "Fee not credited"); // 99 = stake refund, 49 = earnings - creatorShare
+        require(
+            balanceBAfter - balanceBBefore == (99 + 49),
+            "Fee not credited"
+        ); // 99 = stake refund, 49 = earnings - creatorShare
         vm.stopPrank();
     }
 
@@ -125,11 +149,18 @@ contract CommitTest is Test {
 
         uint beforeFees = protocol.getProtocolFees(address(0));
         uint beforeBalance = address(this).balance;
-        require(beforeFees == protocol.PROTOCOL_CREATE_FEE() + protocol.PROTOCOL_JOIN_FEE(), "Fees not credited");
+        require(
+            beforeFees ==
+                protocol.PROTOCOL_CREATE_FEE() + protocol.PROTOCOL_JOIN_FEE(),
+            "Fees not credited"
+        );
         protocol.claimProtocolFees(address(0));
         uint afterFees = protocol.getProtocolFees(address(0));
         uint afterBalance = address(this).balance;
         require(afterFees == 0, "Fees not cleared");
-        require(afterBalance - beforeBalance == beforeFees, "Balance not updated");
+        require(
+            afterBalance - beforeBalance == beforeFees,
+            "Balance not updated"
+        );
     }
 }
