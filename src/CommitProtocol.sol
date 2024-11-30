@@ -191,6 +191,7 @@ contract CommitProtocol is
     error OnlyCreatorCanClaim();
     error NoCreatorFeesToClaim();
 
+    uint256[49] __gap;
     /*//////////////////////////////////////////////////////////////
                             INITIALIZATION
     //////////////////////////////////////////////////////////////*/
