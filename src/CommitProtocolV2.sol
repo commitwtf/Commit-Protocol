@@ -9,10 +9,8 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
-/// @title CommitProtocol — an onchain accountability protocol
-/// @notice Enables users to create and participate in commitment-based challenges
-/// @dev Implements stake management, fee distribution, and emergency controls
-contract CommitProtocol is
+/// @custom:oz-upgrades-from CommitProtocol
+contract CommitProtocolV2 is
     UUPSUpgradeable,
     ReentrancyGuardUpgradeable,
     OwnableUpgradeable,
@@ -243,13 +241,79 @@ contract CommitProtocol is
         return commitmentId;
     }
 
+    /// @notice Creates a commitment with specified parameters and stake requirements
+    /// @param _creatorFee The fee required to join the commitment (optionally set by creator)
+    /// @param _description A brief description of the commitment
+    /// @param _joinDeadline The deadline for participants to join
+    /// @param _fulfillmentDeadline The deadline for fulfilling the commitment
+    /// @dev Creator becomes first participant by staking tokens + paying creation fee in ETH
+    function createCommitmentNativeToken(
+        uint _creatorFee,
+        string calldata _description,
+        uint _joinDeadline,
+        uint _fulfillmentDeadline
+    ) external payable nonReentrant whenNotPaused returns (uint) {
+        require(
+            msg.value >= PROTOCOL_CREATE_FEE,
+            "Invalid creation fee amount"
+        );
+
+        require(
+            bytes(_description).length <= MAX_DESCRIPTION_LENGTH,
+            "Description too long"
+        );
+        require(_joinDeadline > block.timestamp, "Join Deadline Too Early");
+        require(
+            _fulfillmentDeadline > _joinDeadline &&
+                _fulfillmentDeadline <= block.timestamp + MAX_DEADLINE_DURATION,
+            "Fulfillment Deadline Too Early or Late"
+        );
+
+        uint stakeAmount = msg.value - PROTOCOL_CREATE_FEE;
+
+        require(stakeAmount > 0, "Stake Must Be Non-Zero");
+
+        protocolFees[address(0)] += PROTOCOL_CREATE_FEE;
+
+        uint commitmentId = nextCommitmentId++;
+
+        Commitment storage commitment = commitments[commitmentId];
+
+        // Initialize commitment details
+        commitment.id = commitmentId;
+        commitment.creator = msg.sender;
+        commitment.tokenAddress = address(0);
+        commitment.stakeAmount = stakeAmount;
+        commitment.creatorFee = _creatorFee;
+        commitment.description = _description;
+        commitment.joinDeadline = _joinDeadline;
+        commitment.fulfillmentDeadline = _fulfillmentDeadline;
+        commitment.status = CommitmentStatus.Active;
+
+        // Make creator the first participant with their stake amount
+        commitment.participants.add(msg.sender);
+
+        emit CommitmentCreated(
+            commitmentId,
+            msg.sender,
+            address(0),
+            stakeAmount,
+            _creatorFee,
+            _description
+        );
+
+        emit CommitmentJoined(commitmentId, msg.sender);
+
+        return commitmentId;
+    }
+
     /// @notice Allows joining an active commitment
     /// @param _id The ID of the commitment to join
     function joinCommitment(
         uint _id
     ) external payable nonReentrant whenNotPaused {
         require(_id < nextCommitmentId, "Commitment does not exist");
-        require(msg.value == PROTOCOL_JOIN_FEE, "Invalid join fee amount");
+        require(msg.value >= PROTOCOL_JOIN_FEE, "Invalid join fee amount");
 
         Commitment storage commitment = commitments[_id];
         require(
@@ -282,15 +346,22 @@ contract CommitProtocol is
             commitment.creatorClaim += creatorFee - protocolEarnings;
         }
 
-        // Transfer total amount in one transaction
-        IERC20(commitment.tokenAddress).transferFrom(
-            msg.sender,
-            address(this),
-            totalAmount
-        );
-
         // Record participant's join status
         commitment.participants.add(msg.sender);
+
+        if (commitment.tokenAddress == address(0)) {
+            require(
+                msg.value - PROTOCOL_JOIN_FEE == commitment.stakeAmount,
+                "Invalid stake amount provided"
+            );
+        } else {
+            // Transfer total amount in one transaction
+            IERC20(commitment.tokenAddress).transferFrom(
+                msg.sender,
+                address(this),
+                totalAmount
+            );
+        }
 
         emit CommitmentJoined(_id, msg.sender);
     }
@@ -391,7 +462,9 @@ contract CommitProtocol is
     /// @notice Claims participant stake after emergency cancellation
     /// @dev No protocol fees are assessed however join fees are non-refundable
     /// @param _id The commitment ID to claim stake from
-    function claimCancelled(uint _id) external nonReentrant whenNotPaused {
+    function claimCancelled(
+        uint _id
+    ) external payable nonReentrant whenNotPaused {
         Commitment storage commitment = commitments[_id];
 
         require(
@@ -410,7 +483,12 @@ contract CommitProtocol is
         // Mark as claimed before transfer to prevent reentrancy
         commitment.participantClaimed[msg.sender] = true;
 
-        IERC20(commitment.tokenAddress).transfer(msg.sender, amount);
+        if (commitment.tokenAddress == address(0)) {
+            (bool success, ) = msg.sender.call{value: amount}("");
+            require(success, "Native token transfer failed");
+        } else {
+            IERC20(commitment.tokenAddress).transfer(msg.sender, amount);
+        }
 
         emit EmergencyStakesReturned(
             _id,
@@ -423,7 +501,9 @@ contract CommitProtocol is
     /// @dev Winners can claim their original stake plus their share of rewards from failed stakes
     /// @dev Losers cannot claim anything as their stakes are distributed to winners
     /// @param _id The commitment ID to claim rewards from
-    function claimRewards(uint _id) external nonReentrant whenNotPaused {
+    function claimRewards(
+        uint _id
+    ) external payable nonReentrant whenNotPaused {
         Commitment storage commitment = commitments[_id];
 
         require(
@@ -439,7 +519,12 @@ contract CommitProtocol is
         // Mark as claimed before transfer to prevent reentrancy
         commitment.participantClaimed[msg.sender] = true;
 
-        IERC20(commitment.tokenAddress).transfer(msg.sender, amount);
+        if (commitment.tokenAddress == address(0)) {
+            (bool success, ) = msg.sender.call{value: amount}("");
+            require(success, "Native token transfer failed");
+        } else {
+            IERC20(commitment.tokenAddress).transfer(msg.sender, amount);
+        }
 
         emit RewardsClaimed(_id, msg.sender, commitment.tokenAddress, amount);
     }
@@ -457,7 +542,12 @@ contract CommitProtocol is
         // Update how much they have claimed to prevent reclaiming the same funds
         commitment.creatorClaimed += amount;
 
-        IERC20(commitment.tokenAddress).transfer(msg.sender, amount);
+        if (commitment.tokenAddress == address(0)) {
+            (bool success, ) = msg.sender.call{value: amount}("");
+            require(success, "Native token transfer failed");
+        } else {
+            IERC20(commitment.tokenAddress).transfer(msg.sender, amount);
+        }
 
         emit CreatorClaimed(_id, msg.sender, commitment.tokenAddress, amount);
     }
