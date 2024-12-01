@@ -10,7 +10,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 /// @custom:oz-upgrades-from CommitProtocol
-contract CommitProtocolV2 is
+contract CommitProtocolV03 is
     UUPSUpgradeable,
     ReentrancyGuardUpgradeable,
     OwnableUpgradeable,
