@@ -2,11 +2,12 @@
 pragma solidity ^0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
-import {CommitProtocol} from "../src/CommitProtocol.sol";
+import {CommitProtocolV03} from "../src/CommitProtocolV03.sol";
 import {TestToken} from "./TestToken.sol";
+import "forge-std/console2.sol";
 
 contract CommitTest is Test {
-    CommitProtocol private protocol;
+    CommitProtocolV03 private protocol;
     TestToken private token;
 
     address userA = 0x0000000000000000000000000000000000000001;
@@ -15,36 +16,36 @@ contract CommitTest is Test {
     address userD = 0x0000000000000000000000000000000000000004;
 
     function setUp() public {
-        protocol = new CommitProtocol();
+        protocol = new CommitProtocolV03();
         token = new TestToken();
         protocol.initialize(address(this));
         protocol.addAllowedToken(address(token));
-        vm.deal(userA, 1 ether);
-        vm.deal(userB, 1 ether);
-        vm.deal(userC, 1 ether);
-        vm.deal(userD, 1 ether);
+        vm.deal(userA, 100 ether);
+        vm.deal(userB, 100 ether);
+        vm.deal(userC, 100 ether);
+        vm.deal(userD, 100 ether);
     }
 
-    receive() external payable { }
+    receive() external payable {}
 
-    function create(address user, uint stakeAmount, uint creatorShare) public returns (uint) {
+    function create(address user, uint256 stakeAmount, uint256 creatorShare) public returns (uint256) {
         vm.deal(user, protocol.PROTOCOL_CREATE_FEE());
         vm.startPrank(user);
         token.deal(100);
         token.approve(address(protocol), type(uint256).max);
-        uint id = protocol.createCommitment{value: protocol.PROTOCOL_CREATE_FEE()}(
+        uint256 id = protocol.createCommitment{value: protocol.PROTOCOL_CREATE_FEE()}(
             address(token), // _tokenAddress,
             stakeAmount, // _stakeAmount,
             creatorShare, // _creatorShare,
             "Test", // _description,
             block.timestamp + 1, // _joinDeadline,
             block.timestamp + 11 // _fulfillmentDeadline
-        ) ;
+        );
         vm.stopPrank();
         return id;
     }
 
-    function join(uint commitmentId, address user, uint stakeAmount, uint joinFee) public {
+    function join(uint256 commitmentId, address user, uint256 stakeAmount, uint256 joinFee) public {
         vm.startPrank(user);
         token.deal(stakeAmount + joinFee);
         token.approve(address(protocol), type(uint256).max);
@@ -52,7 +53,7 @@ contract CommitTest is Test {
         vm.stopPrank();
     }
 
-    function resolve(uint commitmentId, address[] memory winners) public {
+    function resolve(uint256 commitmentId, address[] memory winners) public {
         address creator = protocol.getCommitmentCreator(commitmentId);
         vm.startPrank(creator);
         protocol.resolveCommitment(commitmentId, winners);
@@ -64,13 +65,12 @@ contract CommitTest is Test {
     }
 
     function test_Join() public {
-        uint commitmentId = create(userA, 100, 5);
+        uint256 commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
     }
 
-
     function test_RewardSingleClaim() public {
-        uint commitmentId = create(userA, 100, 5);
+        uint256 commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
 
         vm.warp(13);
@@ -79,16 +79,16 @@ contract CommitTest is Test {
         resolve(commitmentId, winners);
 
         vm.startPrank(userB);
-        uint balanceBBefore = token.balanceOf(userB);
+        uint256 balanceBBefore = token.balanceOf(userB);
         require(protocol.getCommitmentWinnerClaim(commitmentId) == 99 + 99, "Invalid Reward"); // 99 = stake refund, 99 = earnings
         protocol.claimRewards(commitmentId);
-        uint balanceBAfter = token.balanceOf(userB);
+        uint256 balanceBAfter = token.balanceOf(userB);
         require(balanceBAfter - balanceBBefore == (99 + 99), "Fee not credited");
         vm.stopPrank();
     }
 
     function test_RewardMultiClaim() public {
-        uint commitmentId = create(userA, 100, 5);
+        uint256 commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
         join(commitmentId, userC, 100, 5);
 
@@ -99,36 +99,131 @@ contract CommitTest is Test {
         resolve(commitmentId, winners);
 
         vm.startPrank(userB);
-        uint balanceBBefore = token.balanceOf(userB);
+        uint256 balanceBBefore = token.balanceOf(userB);
         require(protocol.getCommitmentWinnerClaim(commitmentId) == 99 + 49, "Invalid Reward");
         protocol.claimRewards(commitmentId);
-        uint balanceBAfter = token.balanceOf(userB);
+        uint256 balanceBAfter = token.balanceOf(userB);
         require(balanceBAfter - balanceBBefore == (99 + 49), "Fee not credited"); // 99 = stake refund, 49 = earnings - creatorShare
         vm.stopPrank();
     }
 
     function test_CreatorClaim() public {
-        uint commitmentId = create(userA, 100, 5);
+        uint256 commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
 
         vm.startPrank(userA);
-        uint balanceBefore = token.balanceOf(userA);
+        uint256 balanceBefore = token.balanceOf(userA);
         protocol.claimCreator(commitmentId);
-        uint balanceAfter = token.balanceOf(userA);
+        uint256 balanceAfter = token.balanceOf(userA);
         require(balanceAfter - balanceBefore == 5, "Fee not credited");
         vm.stopPrank();
     }
 
     function test_ProtocolFees() public {
-        uint commitmentId = create(userA, 100, 10);
+        uint256 commitmentId = create(userA, 100, 10);
         join(commitmentId, userB, 100, 10);
 
-        uint beforeFees = protocol.getProtocolFees(address(0));
-        uint beforeBalance = address(this).balance;
+        uint256 beforeFees = protocol.getProtocolFees(address(0));
+        uint256 beforeBalance = address(this).balance;
         require(beforeFees == protocol.PROTOCOL_CREATE_FEE() + protocol.PROTOCOL_JOIN_FEE(), "Fees not credited");
         protocol.claimProtocolFees(address(0));
-        uint afterFees = protocol.getProtocolFees(address(0));
-        uint afterBalance = address(this).balance;
+        uint256 afterFees = protocol.getProtocolFees(address(0));
+        uint256 afterBalance = address(this).balance;
+        require(afterFees == 0, "Fees not cleared");
+        require(afterBalance - beforeBalance == beforeFees, "Balance not updated");
+    }
+
+    function create_native(address user, uint256 stakeAmount, uint256 creatorShare) public returns (uint256) {
+        vm.startPrank(user);
+
+        uint256 id = protocol.createCommitmentNativeToken{value: protocol.PROTOCOL_CREATE_FEE() + stakeAmount}(
+            creatorShare, // _creatorShare,
+            "Test", // _description,
+            block.timestamp + 1, // _joinDeadline,
+            block.timestamp + 11 // _fulfillmentDeadline
+        );
+        vm.stopPrank();
+        return id;
+    }
+
+    function join_native(uint256 commitmentId, address user, uint256 stakeAmount, uint256 joinFee) public {
+        vm.startPrank(user);
+        protocol.joinCommitment{value: protocol.PROTOCOL_JOIN_FEE() + stakeAmount}(commitmentId);
+        vm.stopPrank();
+    }
+
+    function test_Create_native() public {
+        create_native(userA, 100, 10);
+    }
+
+    function test_Join_native() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        join_native(commitmentId, userB, 100, 5);
+    }
+
+    function test_RewardSingleClaim_native() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        join_native(commitmentId, userB, 100, 5);
+
+        vm.warp(13);
+        address[] memory winners = new address[](1);
+        winners[0] = userB;
+        resolve(commitmentId, winners);
+
+        vm.startPrank(userB);
+        uint256 balanceBBefore = userB.balance;
+        require(protocol.getCommitmentWinnerClaim(commitmentId) == 99 + 99, "Invalid Reward"); // 99 = stake refund, 99 = earnings
+        protocol.claimRewards(commitmentId);
+        uint256 balanceBAfter = token.balanceOf(userB);
+
+        vm.stopPrank();
+    }
+
+    function test_RewardMultiClaim_native() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        join_native(commitmentId, userB, 100, 5);
+        join_native(commitmentId, userC, 100, 5);
+
+        vm.warp(13);
+        address[] memory winners = new address[](2);
+        winners[0] = userB;
+        winners[1] = userC;
+        resolve(commitmentId, winners);
+
+        vm.startPrank(userB);
+        uint256 balanceBBefore = userB.balance;
+
+        require(protocol.getCommitmentWinnerClaim(commitmentId) == 99 + 49, "Invalid Reward");
+
+        protocol.claimRewards(commitmentId);
+        uint256 balanceBAfter = userB.balance;
+
+        require(balanceBAfter - balanceBBefore == (99 + 49), "Fee not credited"); // 99 = stake refund, 49 = earnings - creatorShare
+        vm.stopPrank();
+    }
+
+    function test_CreatorClaim_native() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        join_native(commitmentId, userB, 100, 5);
+
+        vm.startPrank(userA);
+        uint256 balanceBefore = userA.balance;
+        protocol.claimCreator(commitmentId);
+        uint256 balanceAfter = userA.balance;
+        require(balanceAfter - balanceBefore == 5, "Fee not credited");
+        vm.stopPrank();
+    }
+
+    function test_ProtocolFees_native() public {
+        uint256 commitmentId = create_native(userA, 100, 10);
+        join_native(commitmentId, userB, 100, 10);
+
+        uint256 beforeFees = protocol.getProtocolFees(address(0));
+        uint256 beforeBalance = address(this).balance;
+        require(beforeFees == protocol.PROTOCOL_CREATE_FEE() + protocol.PROTOCOL_JOIN_FEE(), "Fees not credited");
+        protocol.claimProtocolFees(address(0));
+        uint256 afterFees = protocol.getProtocolFees(address(0));
+        uint256 afterBalance = address(this).balance;
         require(afterFees == 0, "Fees not cleared");
         require(afterBalance - beforeBalance == beforeFees, "Balance not updated");
     }
