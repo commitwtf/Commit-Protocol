@@ -15,8 +15,7 @@ contract DeployCommitProtocol is Script {
 
         // Deploy UUPS Proxy
         address proxy = Upgrades.deployUUPSProxy(
-            "CommitProtocol.sol",
-            abi.encodeCall(CommitProtocol.initialize, (protocolFeeAddress))
+            "CommitProtocol.sol", abi.encodeCall(CommitProtocol.initialize, (protocolFeeAddress))
         );
 
         vm.stopBroadcast();

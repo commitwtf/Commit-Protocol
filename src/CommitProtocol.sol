@@ -12,12 +12,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 /// @title CommitProtocol — an onchain accountability protocol
 /// @notice Enables users to create and participate in commitment-based challenges
 /// @dev Implements stake management, fee distribution, and emergency controls
-contract CommitProtocol is
-    UUPSUpgradeable,
-    ReentrancyGuardUpgradeable,
-    OwnableUpgradeable,
-    PausableUpgradeable
-{
+contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable, PausableUpgradeable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /*//////////////////////////////////////////////////////////////
@@ -26,17 +21,17 @@ contract CommitProtocol is
     /// @notice Represents a single commitment with its rules and state
     /// @dev Uses EnumerableSet for participant management and mapping for success tracking
     struct Commitment {
-        uint id; // Unique identifier
+        uint256 id; // Unique identifier
         address creator; // Address that created the commitment
         address tokenAddress; // Token used for staking
-        uint stakeAmount; // Amount each participant must stake
-        uint creatorFee; // Optional fee in ERC20 token
+        uint256 stakeAmount; // Amount each participant must stake
+        uint256 creatorFee; // Optional fee in ERC20 token
         string description; // Description of the commitment
-        uint joinDeadline; // Deadline to join
-        uint fulfillmentDeadline; // Deadline to fulfill commitment
-        uint winnerClaim; // Amount each winner can claim
-        uint creatorClaim; // Total amount creator can claim
-        uint creatorClaimed; // Amount creator has already claimed
+        uint256 joinDeadline; // Deadline to join
+        uint256 fulfillmentDeadline; // Deadline to fulfill commitment
+        uint256 winnerClaim; // Amount each winner can claim
+        uint256 creatorClaim; // Total amount creator can claim
+        uint256 creatorClaimed; // Amount creator has already claimed
         mapping(address => bool) participantClaimed;
         EnumerableSet.AddressSet participants;
         EnumerableSet.AddressSet winners;
@@ -55,23 +50,23 @@ contract CommitProtocol is
     //////////////////////////////////////////////////////////////*/
 
     // Protocol fees
-    uint public constant PROTOCOL_JOIN_FEE = 0.0002 ether; // Fixed ETH fee for joining
-    uint public constant PROTOCOL_CREATE_FEE = 0.001 ether; // Fixed ETH fee for creating
-    uint public constant PROTOCOL_SHARE = 100; // 1% of stakes and creator fees
+    uint256 public constant PROTOCOL_JOIN_FEE = 0.0002 ether; // Fixed ETH fee for joining
+    uint256 public constant PROTOCOL_CREATE_FEE = 0.001 ether; // Fixed ETH fee for creating
+    uint256 public constant PROTOCOL_SHARE = 100; // 1% of stakes and creator fees
 
     // Other constants
-    uint public constant BASIS_POINTS = 10000; // For percentage calculations
-    uint public constant MAX_DESCRIPTION_LENGTH = 1000; // Characters
-    uint public constant MAX_DEADLINE_DURATION = 365 days; // Max time window
+    uint256 public constant BASIS_POINTS = 10000; // For percentage calculations
+    uint256 public constant MAX_DESCRIPTION_LENGTH = 1000; // Characters
+    uint256 public constant MAX_DEADLINE_DURATION = 365 days; // Max time window
 
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
 
-    uint public nextCommitmentId;
+    uint256 public nextCommitmentId;
     address public protocolFeeAddress;
-    mapping(uint => Commitment) private commitments;
-    mapping(address => uint) public protocolFees;
+    mapping(uint256 => Commitment) private commitments;
+    mapping(address => uint256) public protocolFees;
     EnumerableSet.AddressSet private allowedTokens;
 
     /*//////////////////////////////////////////////////////////////
@@ -81,66 +76,33 @@ contract CommitProtocol is
     // Commitment lifecycle events
     event TokenAllowanceUpdated(address indexed token, bool allowed);
     event CommitmentCreated(
-        uint indexed id,
+        uint256 indexed id,
         address indexed creator,
         address tokenAddress,
-        uint stakeAmount,
-        uint creatorFee,
+        uint256 stakeAmount,
+        uint256 creatorFee,
         string description
     );
-    event CommitmentJoined(uint indexed id, address indexed participant);
-    event CommitmentResolved(uint indexed id, address[] winners);
-    event CommitmentCancelled(uint indexed id, address indexed cancelledBy);
-    event CommitmentEmergencyCancelled(uint indexed id);
+    event CommitmentJoined(uint256 indexed id, address indexed participant);
+    event CommitmentResolved(uint256 indexed id, address[] winners);
+    event CommitmentCancelled(uint256 indexed id, address indexed cancelledBy);
+    event CommitmentEmergencyCancelled(uint256 indexed id);
 
     // Claim events
-    event RewardsClaimed(
-        uint indexed id,
-        address indexed participant,
-        address indexed token,
-        uint amount
-    );
-    event CreatorClaimed(
-        uint indexed id,
-        address indexed creator,
-        address indexed token,
-        uint amount
-    );
-    event WinnerClaimed(
-        uint indexed id,
-        address indexed winner,
-        address indexed token,
-        uint amount
-    );
-    event EmergencyStakesReturned(
-        uint indexed id,
-        uint participantCount,
-        address initiator
-    );
+    event RewardsClaimed(uint256 indexed id, address indexed participant, address indexed token, uint256 amount);
+    event CreatorClaimed(uint256 indexed id, address indexed creator, address indexed token, uint256 amount);
+    event WinnerClaimed(uint256 indexed id, address indexed winner, address indexed token, uint256 amount);
+    event EmergencyStakesReturned(uint256 indexed id, uint256 participantCount, address initiator);
 
     // Fee events
-    event ProtocolFeePaid(
-        uint indexed id,
-        address indexed participant,
-        address indexed token,
-        uint amount
-    );
-    event CreatorFeePaid(
-        uint indexed id,
-        address indexed participant,
-        address indexed token,
-        uint amount
-    );
-    event FeesClaimed(
-        address indexed recipient,
-        address indexed token,
-        uint amount
-    );
+    event ProtocolFeePaid(uint256 indexed id, address indexed participant, address indexed token, uint256 amount);
+    event CreatorFeePaid(uint256 indexed id, address indexed participant, address indexed token, uint256 amount);
+    event FeesClaimed(address indexed recipient, address indexed token, uint256 amount);
 
     // Admin events
     event TokenListUpdated(address indexed token, bool allowed);
     event ProtocolFeeAddressUpdated(address oldAddress, address newAddress);
-    event EmergencyWithdrawal(address indexed token, uint amount);
+    event EmergencyWithdrawal(address indexed token, uint256 amount);
     event ContractPaused();
     event ContractUnpaused();
 
@@ -155,10 +117,7 @@ contract CommitProtocol is
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
         __Pausable_init();
-        require(
-            _protocolFeeAddress != address(0),
-            "Invalid protocol fee address"
-        );
+        require(_protocolFeeAddress != address(0), "Invalid protocol fee address");
         protocolFeeAddress = _protocolFeeAddress;
     }
 
@@ -176,28 +135,18 @@ contract CommitProtocol is
     /// @dev Creator becomes first participant by staking tokens + paying creation fee in ETH
     function createCommitment(
         address _tokenAddress,
-        uint _stakeAmount,
-        uint _creatorFee,
+        uint256 _stakeAmount,
+        uint256 _creatorFee,
         string calldata _description,
-        uint _joinDeadline,
-        uint _fulfillmentDeadline
-    ) external payable nonReentrant whenNotPaused returns (uint) {
-        require(
-            msg.value == PROTOCOL_CREATE_FEE,
-            "Invalid creation fee amount"
-        );
-        require(
-            allowedTokens.contains(_tokenAddress),
-            "Token not allowed for commitments"
-        );
-        require(
-            bytes(_description).length <= MAX_DESCRIPTION_LENGTH,
-            "Description too long"
-        );
+        uint256 _joinDeadline,
+        uint256 _fulfillmentDeadline
+    ) external payable nonReentrant whenNotPaused returns (uint256) {
+        require(msg.value == PROTOCOL_CREATE_FEE, "Invalid creation fee amount");
+        require(allowedTokens.contains(_tokenAddress), "Token not allowed for commitments");
+        require(bytes(_description).length <= MAX_DESCRIPTION_LENGTH, "Description too long");
         require(_joinDeadline > block.timestamp, "Join Deadline Too Early");
         require(
-            _fulfillmentDeadline > _joinDeadline &&
-                _fulfillmentDeadline <= block.timestamp + MAX_DEADLINE_DURATION,
+            _fulfillmentDeadline > _joinDeadline && _fulfillmentDeadline <= block.timestamp + MAX_DEADLINE_DURATION,
             "Fulfillment Deadline Too Early or Late"
         );
         require(_stakeAmount > 0, "Stake Must Be Non-Zero");
@@ -205,13 +154,9 @@ contract CommitProtocol is
         protocolFees[address(0)] += PROTOCOL_CREATE_FEE;
 
         // Transfer stake amount for creator
-        IERC20(_tokenAddress).transferFrom(
-            msg.sender,
-            address(this),
-            _stakeAmount
-        );
+        IERC20(_tokenAddress).transferFrom(msg.sender, address(this), _stakeAmount);
 
-        uint commitmentId = nextCommitmentId++;
+        uint256 commitmentId = nextCommitmentId++;
 
         Commitment storage commitment = commitments[commitmentId];
 
@@ -229,14 +174,7 @@ contract CommitProtocol is
         // Make creator the first participant with their stake amount
         commitment.participants.add(msg.sender);
 
-        emit CommitmentCreated(
-            commitmentId,
-            msg.sender,
-            _tokenAddress,
-            _stakeAmount,
-            _creatorFee,
-            _description
-        );
+        emit CommitmentCreated(commitmentId, msg.sender, _tokenAddress, _stakeAmount, _creatorFee, _description);
 
         emit CommitmentJoined(commitmentId, msg.sender);
 
@@ -245,37 +183,25 @@ contract CommitProtocol is
 
     /// @notice Allows joining an active commitment
     /// @param _id The ID of the commitment to join
-    function joinCommitment(
-        uint _id
-    ) external payable nonReentrant whenNotPaused {
+    function joinCommitment(uint256 _id) external payable nonReentrant whenNotPaused {
         require(_id < nextCommitmentId, "Commitment does not exist");
         require(msg.value == PROTOCOL_JOIN_FEE, "Invalid join fee amount");
 
         Commitment storage commitment = commitments[_id];
-        require(
-            commitment.status == CommitmentStatus.Active,
-            "Commitment not active"
-        );
-        require(
-            block.timestamp < commitment.joinDeadline,
-            "Commitment join deadline has passed"
-        );
-        require(
-            !commitment.participants.contains(msg.sender),
-            "Already joined commitment"
-        );
+        require(commitment.status == CommitmentStatus.Active, "Commitment not active");
+        require(block.timestamp < commitment.joinDeadline, "Commitment join deadline has passed");
+        require(!commitment.participants.contains(msg.sender), "Already joined commitment");
 
         protocolFees[address(0)] += PROTOCOL_JOIN_FEE;
 
-        uint totalAmount = commitment.stakeAmount;
+        uint256 totalAmount = commitment.stakeAmount;
 
         // Handle creator fee if set
-        uint creatorFee = commitment.creatorFee;
+        uint256 creatorFee = commitment.creatorFee;
         if (creatorFee > 0) {
             totalAmount += creatorFee;
 
-            uint protocolEarnings = (creatorFee * PROTOCOL_SHARE) /
-                BASIS_POINTS;
+            uint256 protocolEarnings = (creatorFee * PROTOCOL_SHARE) / BASIS_POINTS;
 
             // Update accumulated token fees
             protocolFees[commitment.tokenAddress] += protocolEarnings;
@@ -283,11 +209,7 @@ contract CommitProtocol is
         }
 
         // Transfer total amount in one transaction
-        IERC20(commitment.tokenAddress).transferFrom(
-            msg.sender,
-            address(this),
-            totalAmount
-        );
+        IERC20(commitment.tokenAddress).transferFrom(msg.sender, address(this), totalAmount);
 
         // Record participant's join status
         commitment.participants.add(msg.sender);
@@ -299,34 +221,22 @@ contract CommitProtocol is
     /// @param _id The ID of the commitment to resolve
     /// @param _winners The addresses of the participants who succeeded
     /// @dev Only creator can resolve, must be after fulfillment deadline
-    function resolveCommitment(
-        uint _id,
-        address[] memory _winners
-    ) public nonReentrant whenNotPaused {
+    function resolveCommitment(uint256 _id, address[] memory _winners) public nonReentrant whenNotPaused {
         Commitment storage commitment = commitments[_id];
         require(msg.sender == commitment.creator, "Only creator can resolve");
-        require(
-            commitment.status == CommitmentStatus.Active,
-            "Commitment not active"
-        );
-        require(
-            block.timestamp > commitment.fulfillmentDeadline,
-            "Fulfillment period not ended"
-        );
+        require(commitment.status == CommitmentStatus.Active, "Commitment not active");
+        require(block.timestamp > commitment.fulfillmentDeadline, "Fulfillment period not ended");
 
         EnumerableSet.AddressSet storage participants = commitment.participants;
         EnumerableSet.AddressSet storage winners = commitment.winners;
 
         // Cache lengths for gas
-        uint winnerCount = _winners.length;
-        uint participantCount = participants.length();
+        uint256 winnerCount = _winners.length;
+        uint256 participantCount = participants.length();
 
-        require(
-            winnerCount > 0 && winnerCount <= participantCount,
-            "Invalid Number of Winners"
-        );
+        require(winnerCount > 0 && winnerCount <= participantCount, "Invalid Number of Winners");
 
-        for (uint i = 0; i < winnerCount; i++) {
+        for (uint256 i = 0; i < winnerCount; i++) {
             address winner = _winners[i];
             require(participants.contains(winner), "Invalid winner address");
             require(winners.add(winner), "Duplicate winner");
@@ -334,20 +244,16 @@ contract CommitProtocol is
 
         // Process participants
         // Use local var to save gas so we dont have to read `commitment.failedCount` every time
-        uint failedCount = participantCount - winnerCount;
+        uint256 failedCount = participantCount - winnerCount;
 
-        uint protocolStakeFee = (commitment.stakeAmount * PROTOCOL_SHARE) /
-            BASIS_POINTS;
+        uint256 protocolStakeFee = (commitment.stakeAmount * PROTOCOL_SHARE) / BASIS_POINTS;
 
         // Protocol earns % of all commit stakes, won or lost
-        protocolFees[commitment.tokenAddress] +=
-            protocolStakeFee *
-            participantCount;
+        protocolFees[commitment.tokenAddress] += protocolStakeFee * participantCount;
 
         // Distribute stakes among winners, less protocol fees
-        uint winnerStakeRefund = commitment.stakeAmount - protocolStakeFee;
-        uint winnerStakeEarnings = ((commitment.stakeAmount -
-            protocolStakeFee) * failedCount) / winnerCount;
+        uint256 winnerStakeRefund = commitment.stakeAmount - protocolStakeFee;
+        uint256 winnerStakeEarnings = ((commitment.stakeAmount - protocolStakeFee) * failedCount) / winnerCount;
         commitment.winnerClaim = winnerStakeRefund + winnerStakeEarnings;
 
         // Mark commitment as resolved
@@ -360,19 +266,13 @@ contract CommitProtocol is
     /// @param _id The ID of the commitment to cancel
     /// @dev This calls resolveCommitment internally to handle refunds properly
     /// @dev Requires exactly 1 participant (the creator) since creator auto-joins on creation
-    function cancelCommitment(uint _id) external whenNotPaused {
+    function cancelCommitment(uint256 _id) external whenNotPaused {
         require(_id < nextCommitmentId, "Commitment does not exist");
 
         Commitment storage commitment = commitments[_id];
 
-        require(
-            msg.sender == commitment.creator || msg.sender == owner(),
-            "Only creator or owner can cancel"
-        );
-        require(
-            commitment.status == CommitmentStatus.Active,
-            "Commitment not active"
-        );
+        require(msg.sender == commitment.creator || msg.sender == owner(), "Only creator or owner can cancel");
+        require(commitment.status == CommitmentStatus.Active, "Commitment not active");
         require(
             commitment.participants.length() == 1, // Only creator is present
             "Cannot cancel after others have joined"
@@ -391,21 +291,15 @@ contract CommitProtocol is
     /// @notice Claims participant stake after emergency cancellation
     /// @dev No protocol fees are assessed however join fees are non-refundable
     /// @param _id The commitment ID to claim stake from
-    function claimCancelled(uint _id) external nonReentrant whenNotPaused {
+    function claimCancelled(uint256 _id) external nonReentrant whenNotPaused {
         Commitment storage commitment = commitments[_id];
 
-        require(
-            commitment.status == CommitmentStatus.EmergencyCancelled,
-            "Commitment not emergency cancelled"
-        );
-        require(
-            commitment.participants.contains(msg.sender),
-            "Not a participant"
-        );
+        require(commitment.status == CommitmentStatus.EmergencyCancelled, "Commitment not emergency cancelled");
+        require(commitment.participants.contains(msg.sender), "Not a participant");
         require(!commitment.participantClaimed[msg.sender], "Already claimed");
         require(commitment.stakeAmount > 0, "No rewards to claim");
 
-        uint amount = commitment.stakeAmount;
+        uint256 amount = commitment.stakeAmount;
 
         // Mark as claimed before transfer to prevent reentrancy
         commitment.participantClaimed[msg.sender] = true;
@@ -423,17 +317,14 @@ contract CommitProtocol is
     /// @dev Winners can claim their original stake plus their share of rewards from failed stakes
     /// @dev Losers cannot claim anything as their stakes are distributed to winners
     /// @param _id The commitment ID to claim rewards from
-    function claimRewards(uint _id) external nonReentrant whenNotPaused {
+    function claimRewards(uint256 _id) external nonReentrant whenNotPaused {
         Commitment storage commitment = commitments[_id];
 
-        require(
-            commitment.status == CommitmentStatus.Resolved,
-            "Commitment not resolved"
-        );
+        require(commitment.status == CommitmentStatus.Resolved, "Commitment not resolved");
         require(commitment.winners.contains(msg.sender), "Not a winner");
         require(!commitment.participantClaimed[msg.sender], "Already claimed");
 
-        uint amount = commitment.winnerClaim;
+        uint256 amount = commitment.winnerClaim;
         require(amount > 0, "No rewards to claim");
 
         // Mark as claimed before transfer to prevent reentrancy
@@ -447,11 +338,11 @@ contract CommitProtocol is
     /// @notice Claims creator's rewards
     /// @dev Creator can claim while the commitment is in progress
     /// @param _id The commitment ID to claim creator fees from
-    function claimCreator(uint _id) external nonReentrant whenNotPaused {
+    function claimCreator(uint256 _id) external nonReentrant whenNotPaused {
         Commitment storage commitment = commitments[_id];
 
         require(commitment.creator == msg.sender, "Only creator can claim");
-        uint amount = commitment.creatorClaim - commitment.creatorClaimed;
+        uint256 amount = commitment.creatorClaim - commitment.creatorClaimed;
         require(amount > 0, "No creator fees to claim");
 
         // Update how much they have claimed to prevent reclaiming the same funds
@@ -499,7 +390,7 @@ contract CommitProtocol is
     /// @dev Protocol fees come from join fees (PROTOCOL_SHARE%) and stakes (PROTOCOL_SHARE%)
     /// @dev Creator fees come from creatorFee (optional commitment join fee)
     function claimProtocolFees(address token) external onlyOwner nonReentrant {
-        uint amount = protocolFees[token];
+        uint256 amount = protocolFees[token];
 
         require(amount > 0, "No fees to claim");
 
@@ -508,7 +399,7 @@ contract CommitProtocol is
 
         if (token == address(0)) {
             // Transfer creation fee in ETH
-            (bool sent, ) = protocolFeeAddress.call{value: amount}("");
+            (bool sent,) = protocolFeeAddress.call{value: amount}("");
             require(sent, "ETH transfer failed");
         } else {
             // Transfer accumulated fees
@@ -518,7 +409,7 @@ contract CommitProtocol is
         emit FeesClaimed(msg.sender, token, amount);
     }
 
-    function getProtocolFees(address token) external view returns (uint) {
+    function getProtocolFees(address token) external view returns (uint256) {
         return protocolFees[token];
     }
 
@@ -529,11 +420,8 @@ contract CommitProtocol is
     /// @notice Emergency withdrawal of stuck tokens
     /// @param token The address of the token to withdraw
     /// @param amount The amount of tokens to withdraw
-    function emergencyWithdrawToken(
-        IERC20 token,
-        uint amount
-    ) external onlyOwner {
-        uint balance = token.balanceOf(address(this));
+    function emergencyWithdrawToken(IERC20 token, uint256 amount) external onlyOwner {
+        uint256 balance = token.balanceOf(address(this));
         require(amount > 0 && amount <= balance, "Invalid withdrawal amount");
         token.transfer(msg.sender, amount);
 
@@ -543,12 +431,9 @@ contract CommitProtocol is
     /// @notice Emergency function to cancel a specific commitment
     /// @dev Owner can perform `emergencyWithdrawToken` for manual distribution
     /// @param _id The ID of the commitment to cancel
-    function emergencyCancelCommitment(uint _id) external onlyOwner {
+    function emergencyCancelCommitment(uint256 _id) external onlyOwner {
         Commitment storage commitment = commitments[_id];
-        require(
-            commitment.status == CommitmentStatus.Active,
-            "Commitment not active"
-        );
+        require(commitment.status == CommitmentStatus.Active, "Commitment not active");
 
         commitment.status = CommitmentStatus.EmergencyCancelled;
 
@@ -584,19 +469,17 @@ contract CommitProtocol is
     /// @return timeRemaining Time left to join (0 if ended)
 
     // Core info
-    function getCommitmentDetails(
-        uint _id
-    )
+    function getCommitmentDetails(uint256 _id)
         external
         view
         returns (
             address creator,
-            uint stakeAmount,
-            uint creatorFee,
-            uint participantCount,
+            uint256 stakeAmount,
+            uint256 creatorFee,
+            uint256 participantCount,
             string memory description,
             CommitmentStatus status,
-            uint timeRemaining
+            uint256 timeRemaining
         )
     {
         Commitment storage c = commitments[_id];
@@ -607,110 +490,83 @@ contract CommitProtocol is
             c.participants.length(),
             c.description,
             c.status,
-            c.joinDeadline > block.timestamp
-                ? c.joinDeadline - block.timestamp
-                : 0
+            c.joinDeadline > block.timestamp ? c.joinDeadline - block.timestamp : 0
         );
     }
 
-    function getCommitmentStatus(
-        uint _id
-    ) external view returns (CommitmentStatus) {
+    function getCommitmentStatus(uint256 _id) external view returns (CommitmentStatus) {
         return commitments[_id].status;
     }
 
     // Parameters
-    function getCommitmentCreator(uint _id) external view returns (address) {
+    function getCommitmentCreator(uint256 _id) external view returns (address) {
         return commitments[_id].creator;
     }
 
-    function getCommitmentTokenAddress(
-        uint _id
-    ) external view returns (address) {
+    function getCommitmentTokenAddress(uint256 _id) external view returns (address) {
         return commitments[_id].tokenAddress;
     }
 
-    function getCommitmentStakeAmount(uint _id) external view returns (uint) {
+    function getCommitmentStakeAmount(uint256 _id) external view returns (uint256) {
         return commitments[_id].stakeAmount;
     }
 
-    function getCommitmentCreatorFee(uint _id) external view returns (uint) {
+    function getCommitmentCreatorFee(uint256 _id) external view returns (uint256) {
         return commitments[_id].creatorFee;
     }
 
-    function getCommitmentDescription(
-        uint _id
-    ) external view returns (string memory) {
+    function getCommitmentDescription(uint256 _id) external view returns (string memory) {
         return commitments[_id].description;
     }
 
-    function getCommitmentJoinDeadline(uint _id) external view returns (uint) {
+    function getCommitmentJoinDeadline(uint256 _id) external view returns (uint256) {
         return commitments[_id].joinDeadline;
     }
 
-    function getCommitmentFulfillmentDeadline(
-        uint _id
-    ) external view returns (uint) {
+    function getCommitmentFulfillmentDeadline(uint256 _id) external view returns (uint256) {
         return commitments[_id].fulfillmentDeadline;
     }
 
     // Participant info
-    function getCommitmentParticipants(
-        uint _id
-    ) external view returns (address[] memory) {
+    function getCommitmentParticipants(uint256 _id) external view returns (address[] memory) {
         return commitments[_id].participants.values();
     }
 
-    function getCommitmentParticipantAt(
-        uint _id,
-        uint _index
-    ) external view returns (address) {
+    function getCommitmentParticipantAt(uint256 _id, uint256 _index) external view returns (address) {
         return commitments[_id].participants.at(_index);
     }
 
-    function getNumCommitmentParticipants(
-        uint _id
-    ) external view returns (uint) {
+    function getNumCommitmentParticipants(uint256 _id) external view returns (uint256) {
         return commitments[_id].participants.length();
     }
 
     // Winner info
-    function getCommitmentWinners(
-        uint _id
-    ) external view returns (address[] memory) {
+    function getCommitmentWinners(uint256 _id) external view returns (address[] memory) {
         return commitments[_id].winners.values();
     }
 
-    function getCommitmentWinnerAt(
-        uint _id,
-        uint _index
-    ) external view returns (address) {
+    function getCommitmentWinnerAt(uint256 _id, uint256 _index) external view returns (address) {
         return commitments[_id].winners.at(_index);
     }
 
-    function getNumCommitmentWinners(uint _id) external view returns (uint) {
+    function getNumCommitmentWinners(uint256 _id) external view returns (uint256) {
         return commitments[_id].winners.length();
     }
 
     // Claim info
-    function getCommitmentCreatorClaim(uint _id) external view returns (uint) {
+    function getCommitmentCreatorClaim(uint256 _id) external view returns (uint256) {
         return commitments[_id].creatorClaim;
     }
 
-    function getCommitmentWinnerClaim(uint _id) external view returns (uint) {
+    function getCommitmentWinnerClaim(uint256 _id) external view returns (uint256) {
         return commitments[_id].winnerClaim;
     }
 
-    function getCommitmentCreatorClaimed(
-        uint _id
-    ) external view returns (uint) {
+    function getCommitmentCreatorClaimed(uint256 _id) external view returns (uint256) {
         return commitments[_id].creatorClaimed;
     }
 
-    function hasCommitmentWinnerClaimed(
-        uint _id,
-        address _user
-    ) external view returns (bool) {
+    function hasCommitmentWinnerClaimed(uint256 _id, address _user) external view returns (bool) {
         return commitments[_id].participantClaimed[_user];
     }
 
@@ -722,13 +578,8 @@ contract CommitProtocol is
         require(addr != address(0), "Invalid address");
     }
 
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal view override onlyOwner {
-        require(
-            newImplementation != address(0),
-            "Invalid implementation address"
-        );
+    function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
+        require(newImplementation != address(0), "Invalid implementation address");
     }
 
     /*//////////////////////////////////////////////////////////////
