@@ -32,6 +32,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         uint256 winnerClaim; // Amount each winner can claim
         uint256 creatorClaim; // Total amount creator can claim
         uint256 creatorClaimed; // Amount creator has already claimed
+        uint256 extraFunds;
         mapping(address => bool) participantClaimed;
         EnumerableSet.AddressSet participants;
         EnumerableSet.AddressSet winners;
@@ -87,6 +88,7 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
     event CommitmentResolved(uint256 indexed id, address[] winners);
     event CommitmentCancelled(uint256 indexed id, address indexed cancelledBy);
     event CommitmentEmergencyCancelled(uint256 indexed id);
+    event CommitmentFunded(uint256 id, uint256 amount);
 
     // Claim events
     event RewardsClaimed(uint256 indexed id, address indexed participant, address indexed token, uint256 amount);
@@ -217,6 +219,19 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         emit CommitmentJoined(_id, msg.sender);
     }
 
+    function fundCommitment(uint256 _id, uint256 amount) external nonReentrant whenNotPaused {
+        require(_id < nextCommitmentId, "Commitment doesnt exist");
+
+        Commitment storage commitment = commitments[_id];
+        require(commitment.status == CommitmentStatus.Active, "Commitment not active");
+
+
+        IERC20(commitment.tokenAddress).transferFrom(msg.sender, address(this), amount);
+        commitment.extraFunds += amount;
+
+        emit CommitmentFunded(_id, amount);
+    }
+
     /// @notice Resolves commitment and distributes rewards to winners
     /// @param _id The ID of the commitment to resolve
     /// @param _winners The addresses of the participants who succeeded
@@ -247,14 +262,16 @@ contract CommitProtocol is UUPSUpgradeable, ReentrancyGuardUpgradeable, OwnableU
         uint256 failedCount = participantCount - winnerCount;
 
         uint256 protocolStakeFee = (commitment.stakeAmount * PROTOCOL_SHARE) / BASIS_POINTS;
+        uint256 protocolFeeExtraFunds = (commitment.extraFunds * PROTOCOL_SHARE) / BASIS_POINTS;
 
         // Protocol earns % of all commit stakes, won or lost
-        protocolFees[commitment.tokenAddress] += protocolStakeFee * participantCount;
+        protocolFees[commitment.tokenAddress] += (protocolStakeFee * participantCount) + protocolFeeExtraFunds;
 
         // Distribute stakes among winners, less protocol fees
         uint256 winnerStakeRefund = commitment.stakeAmount - protocolStakeFee;
         uint256 winnerStakeEarnings = ((commitment.stakeAmount - protocolStakeFee) * failedCount) / winnerCount;
-        commitment.winnerClaim = winnerStakeRefund + winnerStakeEarnings;
+        uint256 winnerExtraEarnings = (commitment.extraFunds - protocolFeeExtraFunds) / winnerCount;
+        commitment.winnerClaim = winnerStakeRefund + winnerStakeEarnings + winnerExtraEarnings;
 
         // Mark commitment as resolved
         commitment.status = CommitmentStatus.Resolved;
