@@ -675,6 +675,10 @@ contract CommitProtocol is
         );
     }
 
+    function tokenURI(uint256 _id) public view returns (string memory) {
+        return commitments[_id].info.metadataURI;
+    }
+
     /*//////////////////////////////////////////////////////////////
                             FALLBACK FUNCTIONS
     //////////////////////////////////////////////////////////////*/
