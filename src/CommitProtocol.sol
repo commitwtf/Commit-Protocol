@@ -678,7 +678,7 @@ contract CommitProtocol is
     function tokenURI(
         uint256 _id
     ) public view override returns (string memory) {
-        return commitments[_id].info.metadataURI;
+        return commitments[_id >> 128].info.metadataURI;
     }
 
     function updateMetadataURI(uint256 _id, string memory _uri) public {
