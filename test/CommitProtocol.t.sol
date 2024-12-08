@@ -44,7 +44,8 @@ contract CommitTest is Test {
             creatorShare, // _creatorShare,
             "Test", // _description,
             block.timestamp + 1, // _joinDeadline,
-            block.timestamp + 11 // _fulfillmentDeadline
+            block.timestamp + 11, // _fulfillmentDeadline,
+            "http://test.com"
         );
         vm.stopPrank();
         return id;
@@ -176,7 +177,8 @@ contract CommitTest is Test {
             creatorShare, // _creatorShare,
             "Test", // _description,
             block.timestamp + 1, // _joinDeadline,
-            block.timestamp + 11 // _fulfillmentDeadline
+            block.timestamp + 11, // _fulfillmentDeadline
+            "test.com"
         );
         vm.stopPrank();
         return id;

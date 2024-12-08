@@ -3,12 +3,16 @@ pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
+import {Storage} from "./storage.sol";
+import "./errors.sol";
+import "./logger.sol";
 /// @title CommitProtocol — an onchain accountability protocol
 /// @notice Enables users to create and participate in commitment-based challenges
 /// @dev Implements stake management, fee distribution, and emergency controls
@@ -16,186 +20,12 @@ contract CommitProtocol is
     UUPSUpgradeable,
     ReentrancyGuardUpgradeable,
     OwnableUpgradeable,
-    PausableUpgradeable
+    PausableUpgradeable,
+    ERC721Upgradeable,
+    Storage
 {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    /*//////////////////////////////////////////////////////////////
-                                STRUCTS
-    //////////////////////////////////////////////////////////////*/
-
-    struct CommitmentInfo {
-        uint id; // Unique identifier
-        address creator; // Address that created the commitment
-        address tokenAddress; // Token used for staking
-        uint stakeAmount; // Amount each participant must stake
-        uint creatorFee; // Optional fee in ERC20 token
-        bytes description; // Description of the commitment
-        uint joinDeadline; // Deadline to join
-        uint fulfillmentDeadline; // Deadline to fulfill commitment
-        CommitmentStatus status; // Current status of the commitment
-    }
-
-    struct Claims {
-        uint winnerClaim; // Amount each winner can claim
-        uint creatorClaim; // Total amount creator can claim
-        uint creatorClaimed; // Amount creator has already claimed
-    }
-
-    struct CommitmentParticipants {
-        EnumerableSet.AddressSet participants; // List of participants
-        EnumerableSet.AddressSet winners; // List of winners
-        mapping(address => bool) participantClaimed; // Tracking if a participant has claimed
-    }
-
-    /// @notice Represents a single commitment with its rules and state
-    /// @dev Uses EnumerableSet for participant management and mapping for success tracking
-    struct Commitment {
-        CommitmentInfo info; // Basic commitment details
-        Claims claims; // Creator and winner claim details
-        CommitmentParticipants participants; // Participants and winners details
-    }
-
-    enum CommitmentStatus {
-        Active,
-        Resolved,
-        Cancelled,
-        EmergencyCancelled
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                                CONSTANTS
-    //////////////////////////////////////////////////////////////*/
-
-    // Protocol fees
-    uint public constant PROTOCOL_JOIN_FEE = 0.0002 ether; // Fixed ETH fee for joining
-    uint public constant PROTOCOL_CREATE_FEE = 0.001 ether; // Fixed ETH fee for creating
-    uint public constant PROTOCOL_SHARE = 100; // 1% of stakes and creator fees
-
-    // Other constants
-    uint public constant BASIS_POINTS = 10000; // For percentage calculations
-    uint public constant MAX_DESCRIPTION_LENGTH = 1000; // Characters
-    uint public constant MAX_DEADLINE_DURATION = 365 days; // Max time window
-
-    /*//////////////////////////////////////////////////////////////
-                            STATE VARIABLES
-    //////////////////////////////////////////////////////////////*/
-
-    uint public nextCommitmentId;
-    address public protocolFeeAddress;
-    mapping(uint => Commitment) private commitments;
-    mapping(address => uint) public protocolFees;
-    EnumerableSet.AddressSet private allowedTokens;
-
-    /*//////////////////////////////////////////////////////////////
-                                EVENTS
-    //////////////////////////////////////////////////////////////*/
-
-    // Commitment lifecycle events
-    event TokenAllowanceUpdated(address indexed token, bool allowed);
-    event CommitmentCreated(
-        uint indexed id,
-        address indexed creator,
-        address tokenAddress,
-        uint stakeAmount,
-        uint creatorFee,
-        bytes description
-    );
-    event CommitmentJoined(uint indexed id, address indexed participant);
-    event CommitmentResolved(uint indexed id, address[] winners);
-    event CommitmentCancelled(uint indexed id, address indexed cancelledBy);
-    event CommitmentEmergencyCancelled(uint indexed id);
-
-    // Claim events
-    event RewardsClaimed(
-        uint indexed id,
-        address indexed participant,
-        address indexed token,
-        uint amount
-    );
-    event CreatorClaimed(
-        uint indexed id,
-        address indexed creator,
-        address indexed token,
-        uint amount
-    );
-    event WinnerClaimed(
-        uint indexed id,
-        address indexed winner,
-        address indexed token,
-        uint amount
-    );
-    event EmergencyStakesReturned(
-        uint indexed id,
-        uint participantCount,
-        address initiator
-    );
-
-    // Fee events
-    event ProtocolFeePaid(
-        uint indexed id,
-        address indexed participant,
-        address indexed token,
-        uint amount
-    );
-    event CreatorFeePaid(
-        uint indexed id,
-        address indexed participant,
-        address indexed token,
-        uint amount
-    );
-    event FeesClaimed(
-        address indexed recipient,
-        address indexed token,
-        uint amount
-    );
-
-    // Admin events
-    event TokenListUpdated(address indexed token, bool allowed);
-    event ProtocolFeeAddressUpdated(address oldAddress, address newAddress);
-    event EmergencyWithdrawal(address indexed token, uint amount);
-    event ContractPaused();
-    event ContractUnpaused();
-
-    /*//////////////////////////////////////////////////////////////
-                                ERRORS
-    //////////////////////////////////////////////////////////////*/
-
-    error InvalidState(CommitmentStatus status);
-    error FulfillmentPeriodNotEnded(uint currentTime, uint deadline);
-    error AlreadyJoined();
-    error NoRewardsToClaim();
-    error CommitmentNotExists(uint id);
-    error InvalidCreationFee(uint sent, uint required);
-    error TokenNotAllowed(address token);
-    error DescriptionTooLong();
-    error JoinDealineTooEarly();
-    error InvalidFullfillmentDeadline();
-    error InvalidStakeAmount();
-    error InvalidWinner(address winner);
-    error JoiningPeriodEnded(uint currentTime, uint deadline);
-    error DuplicateWinner(address winner);
-    error InvalidJoinFee(uint sent, uint required);
-    error OnlyCreatorCanResolve();
-    error InvalidNumberOfWinners();
-    error InvalidWinnerAddress();
-    error CommitmentDoesNotExist();
-    error OnlyCreatorOrOwnerCanCancel();
-    error CommitmentNotActive();
-    error CannotCancelAfterOthersHaveJoined();
-    error CommitmentNotEmergencyCancelled();
-    error NotAParticipant();
-    error AlreadyClaimed();
-    error CommitmentNotResolved();
-    error NotAWinner();
-    error OnlyCreatorCanClaim();
-    error NoCreatorFeesToClaim();
-    error InvalidJoinFeeNative();
-    error InvalidStakeAmountNative();
-    error InvalidCreationFeeNative();
-    error InvalidJoinDeadline();
-
-    uint256[49] __gap;
     /*//////////////////////////////////////////////////////////////
                             INITIALIZATION
     //////////////////////////////////////////////////////////////*/
@@ -207,6 +37,7 @@ contract CommitProtocol is
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
         __Pausable_init();
+        __ERC721_init("Commitment", "COMMITMENT");
         require(
             _protocolFeeAddress != address(0),
             "Invalid protocol fee address"
@@ -232,7 +63,8 @@ contract CommitProtocol is
         uint _creatorFee,
         bytes calldata _description,
         uint _joinDeadline,
-        uint _fulfillmentDeadline
+        uint _fulfillmentDeadline,
+        string calldata _metadataURI
     ) external payable nonReentrant whenNotPaused returns (uint) {
         if (msg.value != PROTOCOL_CREATE_FEE) {
             revert InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE);
@@ -278,6 +110,7 @@ contract CommitProtocol is
         info.description = _description;
         info.joinDeadline = _joinDeadline;
         info.fulfillmentDeadline = _fulfillmentDeadline;
+        info.metadataURI = _metadataURI;
         info.status = CommitmentStatus.Active;
 
         commitments[commitmentId].info = info;
@@ -307,7 +140,8 @@ contract CommitProtocol is
         uint256 _creatorFee,
         bytes calldata _description,
         uint256 _joinDeadline,
-        uint256 _fulfillmentDeadline
+        uint256 _fulfillmentDeadline,
+        string calldata _metadataURI
     ) external payable nonReentrant whenNotPaused returns (uint256) {
         if (msg.value < PROTOCOL_CREATE_FEE) {
             revert InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE);
@@ -347,6 +181,7 @@ contract CommitProtocol is
         info.description = _description;
         info.joinDeadline = _joinDeadline;
         info.fulfillmentDeadline = _fulfillmentDeadline;
+        info.metadataURI = _metadataURI;
         info.status = CommitmentStatus.Active;
 
         commitments[commitmentId].info = info;
