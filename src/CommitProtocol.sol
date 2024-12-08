@@ -13,10 +13,10 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 import {Storage} from "./storage.sol";
 import "./errors.sol";
 import "./logger.sol";
-
 /// @title CommitProtocol — an onchain accountability protocol
 /// @notice Enables users to create and participate in commitment-based challenges
 /// @dev Implements stake management, fee distribution, and emergency controls
+/// @author Rachit Anand Srivastava (@privacy_prophet)
 contract CommitProtocol is
     UUPSUpgradeable,
     ReentrancyGuardUpgradeable,
@@ -33,6 +33,7 @@ contract CommitProtocol is
 
     /// @notice Initializes the contract with the protocol fee address
     /// @param _protocolFeeAddress The address where protocol fees are sent
+    /// @param _disperseContract The address of the disperse contract used for distributing rewards
     function initialize(
         address _protocolFeeAddress,
         address _disperseContract
@@ -61,7 +62,9 @@ contract CommitProtocol is
     /// @param _description A brief description of the commitment
     /// @param _joinDeadline The deadline for participants to join
     /// @param _fulfillmentDeadline The deadline for fulfilling the commitment
+    /// @param _metadataURI The URI for the commitment's metadata
     /// @dev Creator becomes first participant by staking tokens + paying creation fee in ETH
+    /// @return The ID of the newly created commitment
     function createCommitment(
         address _tokenAddress,
         uint _stakeAmount,
@@ -136,12 +139,14 @@ contract CommitProtocol is
         return commitmentId;
     }
 
-    /// @notice Creates a commitment with specified parameters and stake requirements
+    /// @notice Creates a commitment using native tokens (ETH) for staking
     /// @param _creatorFee The fee required to join the commitment (optionally set by creator)
     /// @param _description A brief description of the commitment
     /// @param _joinDeadline The deadline for participants to join
     /// @param _fulfillmentDeadline The deadline for fulfilling the commitment
-    /// @dev Creator becomes first participant by staking tokens + paying creation fee in ETH
+    /// @param _metadataURI The URI for the commitment's metadata
+    /// @dev Creator becomes first participant by staking ETH + paying creation fee in ETH
+    /// @return The ID of the newly created commitment
     function createCommitmentNativeToken(
         uint256 _creatorFee,
         bytes calldata _description,
@@ -208,8 +213,10 @@ contract CommitProtocol is
 
         return commitmentId;
     }
+
     /// @notice Allows joining an active commitment
     /// @param _id The ID of the commitment to join
+    /// @dev Participant must pay join fee + stake amount + creator fee (if set)
     function joinCommitment(
         uint _id
     ) external payable nonReentrant whenNotPaused {
@@ -272,10 +279,11 @@ contract CommitProtocol is
         emit CommitmentJoined(_id, msg.sender);
     }
 
-    /// @notice Resolves commitment and distributes rewards to winners
+    /// @notice Resolves commitment using merkle path for winner verification
     /// @param _id The ID of the commitment to resolve
-    /// @param _root The merkle of the participants who succeeded
-    /// @dev Only creator can resolve, must be after fulfillment deadline. If the leaves count is incorrect there can be loss of funds of the winners
+    /// @param _root The merkle root of the participants who succeeded
+    /// @param _leavesCount The number of successful participants
+    /// @dev Only creator can resolve, must be after fulfillment deadline
     function resolveCommitmentMerklePath(
         uint _id,
         bytes32 _root,
@@ -284,6 +292,11 @@ contract CommitProtocol is
         commitments[_id].claims.root = _root;
         _resolveCommitment(_id, _leavesCount);
     }
+
+    /// @notice Resolves commitment using disperse contract for reward distribution
+    /// @param _id The ID of the commitment to resolve
+    /// @param winnerCount The number of successful participants
+    /// @dev Only creator can resolve, must be after fulfillment deadline
     function resolveCommitmentDisperse(
         uint _id,
         uint256 winnerCount
@@ -380,6 +393,7 @@ contract CommitProtocol is
     /// @dev Winners can claim their original stake plus their share of rewards from failed stakes
     /// @dev Losers cannot claim anything as their stakes are distributed to winners
     /// @param _id The commitment ID to claim rewards from
+    /// @param _proof The merkle proof to verify winner status
     function claimRewards(
         uint _id,
         bytes32[] calldata _proof
@@ -464,6 +478,10 @@ contract CommitProtocol is
         );
     }
 
+    /// @notice Internal function to resolve a commitment and calculate winner rewards
+    /// @param _id The commitment ID to resolve
+    /// @param winnerCount The number of successful participants
+    /// @dev Only creator can resolve, must be after fulfillment deadline
     function _resolveCommitment(uint _id, uint256 winnerCount) internal {
         Commitment storage commitment = commitments[_id];
         if (msg.sender != commitment.info.creator) {
@@ -505,6 +523,7 @@ contract CommitProtocol is
 
         emit CommitmentResolved(_id, winnerCount);
     }
+
     /*//////////////////////////////////////////////////////////////
                             ADMIN FUNCTIONS
     //////////////////////////////////////////////////////////////*/
@@ -561,6 +580,9 @@ contract CommitProtocol is
         emit FeesClaimed(msg.sender, token, amount);
     }
 
+    /// @notice Gets the accumulated protocol fees for a specific token
+    /// @param token The address of the token to check fees for
+    /// @return The amount of accumulated fees for the token
     function getProtocolFees(address token) external view returns (uint) {
         return protocolFees[token];
     }
@@ -601,17 +623,26 @@ contract CommitProtocol is
                             VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    // Core info
+    /// @notice Gets the details of a commitment
+    /// @param _id The ID of the commitment
+    /// @return The commitment info struct
     function getCommitmentDetails(
         uint _id
     ) external view returns (CommitmentInfo memory) {
         return commitments[_id].info;
     }
 
+    /// @notice Gets the claims info for a commitment
+    /// @param _id The ID of the commitment
+    /// @return The claims struct containing reward distribution info
     function getClaims(uint _id) external view returns (Claims memory) {
         return commitments[_id].claims;
     }
 
+    /// @notice Checks if a participant has claimed their rewards/refund
+    /// @param commitmentId The ID of the commitment
+    /// @param participant The address of the participant
+    /// @return True if participant has claimed, false otherwise
     function isParticipantClaimed(
         uint commitmentId,
         address participant
@@ -626,10 +657,15 @@ contract CommitProtocol is
                             INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Validates an address is not zero
+    /// @param addr The address to validate
     function _validateAddress(address addr) internal pure {
         require(addr != address(0), "Invalid address");
     }
 
+    /// @notice Authorizes an upgrade to a new implementation
+    /// @param newImplementation The address of the new implementation
+    /// @dev Only owner can upgrade the contract
     function _authorizeUpgrade(
         address newImplementation
     ) internal view override onlyOwner {
@@ -643,6 +679,7 @@ contract CommitProtocol is
                             FALLBACK FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Prevents accidental ETH transfers to contract
     receive() external payable {
         require(false, "Direct deposits not allowed");
     }
