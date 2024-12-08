@@ -13,7 +13,7 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 import {Storage} from "./storage.sol";
 import "./errors.sol";
 import "./logger.sol";
-import "forge-std/console.sol";
+
 /// @title CommitProtocol — an onchain accountability protocol
 /// @notice Enables users to create and participate in commitment-based challenges
 /// @dev Implements stake management, fee distribution, and emergency controls
