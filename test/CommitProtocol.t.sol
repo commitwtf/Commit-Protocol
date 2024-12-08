@@ -163,4 +163,125 @@ contract CommitTest is Test {
             "Balance not updated"
         );
     }
+    function create_native(
+        address user,
+        uint256 stakeAmount,
+        uint256 creatorShare
+    ) public returns (uint256) {
+        vm.startPrank(user);
+
+        uint256 id = protocol.createCommitmentNativeToken{
+            value: protocol.PROTOCOL_CREATE_FEE() + stakeAmount
+        }(
+            creatorShare, // _creatorShare,
+            "Test", // _description,
+            block.timestamp + 1, // _joinDeadline,
+            block.timestamp + 11 // _fulfillmentDeadline
+        );
+        vm.stopPrank();
+        return id;
+    }
+
+    function join_native(
+        uint256 commitmentId,
+        address user,
+        uint256 stakeAmount
+    ) public {
+        vm.startPrank(user);
+        protocol.joinCommitment{
+            value: protocol.PROTOCOL_JOIN_FEE() + stakeAmount
+        }(commitmentId);
+        vm.stopPrank();
+    }
+
+    function test_Create_native() public {
+        create_native(userA, 100, 10);
+    }
+
+    function test_Join_native() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        join_native(commitmentId, userB, 100);
+    }
+
+    function test_RewardSingleClaim_native() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        join_native(commitmentId, userB, 100);
+
+        vm.warp(13);
+        address[] memory winners = new address[](1);
+        winners[0] = userB;
+        resolve(commitmentId, winners);
+
+        vm.startPrank(userB);
+
+        require(
+            protocol.getClaims(commitmentId).winnerClaim == 99 + 99,
+            "Invalid Reward"
+        ); // 99 = stake refund, 99 = earnings
+        protocol.claimRewards(commitmentId);
+
+        vm.stopPrank();
+    }
+
+    function test_RewardMultiClaim_native() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        join_native(commitmentId, userB, 100);
+        join_native(commitmentId, userC, 100);
+
+        vm.warp(13);
+        address[] memory winners = new address[](2);
+        winners[0] = userB;
+        winners[1] = userC;
+        resolve(commitmentId, winners);
+
+        vm.startPrank(userB);
+        uint256 balanceBBefore = userB.balance;
+
+        require(
+            protocol.getClaims(commitmentId).winnerClaim == 99 + 49,
+            "Invalid Reward"
+        );
+
+        protocol.claimRewards(commitmentId);
+        uint256 balanceBAfter = userB.balance;
+
+        require(
+            balanceBAfter - balanceBBefore == (99 + 49),
+            "Fee not credited"
+        ); // 99 = stake refund, 49 = earnings - creatorShare
+        vm.stopPrank();
+    }
+
+    function test_CreatorClaim_native() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        join_native(commitmentId, userB, 100);
+
+        vm.startPrank(userA);
+        uint256 balanceBefore = userA.balance;
+        protocol.claimCreator(commitmentId);
+        uint256 balanceAfter = userA.balance;
+        require(balanceAfter - balanceBefore == 5, "Fee not credited");
+        vm.stopPrank();
+    }
+
+    function test_ProtocolFees_native() public {
+        uint256 commitmentId = create_native(userA, 100, 10);
+        join_native(commitmentId, userB, 100);
+
+        uint256 beforeFees = protocol.getProtocolFees(address(0));
+        uint256 beforeBalance = address(this).balance;
+        require(
+            beforeFees ==
+                protocol.PROTOCOL_CREATE_FEE() + protocol.PROTOCOL_JOIN_FEE(),
+            "Fees not credited"
+        );
+        protocol.claimProtocolFees(address(0));
+        uint256 afterFees = protocol.getProtocolFees(address(0));
+        uint256 afterBalance = address(this).balance;
+        require(afterFees == 0, "Fees not cleared");
+        require(
+            afterBalance - beforeBalance == beforeFees,
+            "Balance not updated"
+        );
+    }
 }

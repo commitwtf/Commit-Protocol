@@ -190,6 +190,10 @@ contract CommitProtocol is
     error NotAWinner();
     error OnlyCreatorCanClaim();
     error NoCreatorFeesToClaim();
+    error InvalidJoinFeeNative();
+    error InvalidStakeAmountNative();
+    error InvalidCreationFeeNative();
+    error InvalidJoinDeadline();
 
     uint256[49] __gap;
     /*//////////////////////////////////////////////////////////////
@@ -293,6 +297,74 @@ contract CommitProtocol is
         return commitmentId;
     }
 
+    /// @notice Creates a commitment with specified parameters and stake requirements
+    /// @param _creatorFee The fee required to join the commitment (optionally set by creator)
+    /// @param _description A brief description of the commitment
+    /// @param _joinDeadline The deadline for participants to join
+    /// @param _fulfillmentDeadline The deadline for fulfilling the commitment
+    /// @dev Creator becomes first participant by staking tokens + paying creation fee in ETH
+    function createCommitmentNativeToken(
+        uint256 _creatorFee,
+        bytes calldata _description,
+        uint256 _joinDeadline,
+        uint256 _fulfillmentDeadline
+    ) external payable nonReentrant whenNotPaused returns (uint256) {
+        if (msg.value < PROTOCOL_CREATE_FEE) {
+            revert InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE);
+        }
+
+        if (_description.length > MAX_DESCRIPTION_LENGTH) {
+            revert DescriptionTooLong();
+        }
+
+        if (_joinDeadline <= block.timestamp) {
+            revert InvalidJoinDeadline();
+        }
+
+        if (
+            !(_fulfillmentDeadline > _joinDeadline &&
+                _fulfillmentDeadline <= block.timestamp + MAX_DEADLINE_DURATION)
+        ) {
+            revert InvalidFullfillmentDeadline();
+        }
+
+        uint256 stakeAmount = msg.value - PROTOCOL_CREATE_FEE;
+
+        if (stakeAmount == 0) {
+            revert InvalidStakeAmount();
+        }
+
+        protocolFees[address(0)] += PROTOCOL_CREATE_FEE;
+
+        uint256 commitmentId = nextCommitmentId++;
+
+        CommitmentInfo memory info;
+        info.id = commitmentId;
+        info.creator = msg.sender;
+        info.tokenAddress = address(0);
+        info.stakeAmount = stakeAmount;
+        info.creatorFee = _creatorFee;
+        info.description = _description;
+        info.joinDeadline = _joinDeadline;
+        info.fulfillmentDeadline = _fulfillmentDeadline;
+        info.status = CommitmentStatus.Active;
+
+        commitments[commitmentId].info = info;
+        commitments[commitmentId].participants.participants.add(msg.sender);
+
+        emit CommitmentCreated(
+            commitmentId,
+            msg.sender,
+            address(0),
+            stakeAmount,
+            _creatorFee,
+            _description
+        );
+
+        emit CommitmentJoined(commitmentId, msg.sender);
+
+        return commitmentId;
+    }
     /// @notice Allows joining an active commitment
     /// @param _id The ID of the commitment to join
     function joinCommitment(
@@ -301,7 +373,7 @@ contract CommitProtocol is
         if (_id >= nextCommitmentId) {
             revert CommitmentNotExists(_id);
         }
-        if (msg.value != PROTOCOL_JOIN_FEE) {
+        if (msg.value < PROTOCOL_JOIN_FEE) {
             revert InvalidJoinFee(msg.value, PROTOCOL_JOIN_FEE);
         }
 
@@ -340,11 +412,20 @@ contract CommitProtocol is
         }
 
         // Transfer total amount in one transaction
-        IERC20(commitment.info.tokenAddress).transferFrom(
-            msg.sender,
-            address(this),
-            totalAmount
-        );
+
+        if (commitment.info.tokenAddress == address(0)) {
+            require(
+                msg.value - PROTOCOL_JOIN_FEE == commitment.info.stakeAmount,
+                "Invalid stake amount provided"
+            );
+        } else {
+            // Transfer total amount in one transaction
+            IERC20(commitment.info.tokenAddress).transferFrom(
+                msg.sender,
+                address(this),
+                totalAmount
+            );
+        }
 
         // Record participant's join status
         commitment.participants.participants.add(msg.sender);
@@ -489,7 +570,12 @@ contract CommitProtocol is
         // Mark as claimed before transfer to prerror reentrancy
         commitment.participants.participantClaimed[msg.sender] = true;
 
-        IERC20(commitment.info.tokenAddress).transfer(msg.sender, amount);
+        if (commitment.info.tokenAddress == address(0)) {
+            (bool success, ) = msg.sender.call{value: amount}("");
+            require(success, "Native token transfer failed");
+        } else {
+            IERC20(commitment.info.tokenAddress).transfer(msg.sender, amount);
+        }
 
         emit EmergencyStakesReturned(
             _id,
@@ -525,7 +611,12 @@ contract CommitProtocol is
         // Mark as claimed before transfer to prevent reentrancy
         commitment.participants.participantClaimed[msg.sender] = true;
 
-        IERC20(commitment.info.tokenAddress).transfer(msg.sender, amount);
+        if (commitment.info.tokenAddress == address(0)) {
+            (bool success, ) = msg.sender.call{value: amount}("");
+            require(success, "Native token transfer failed");
+        } else {
+            IERC20(commitment.info.tokenAddress).transfer(msg.sender, amount);
+        }
 
         emit RewardsClaimed(
             _id,
@@ -555,7 +646,12 @@ contract CommitProtocol is
         // Update how much they have claimed to prevent reclaiming the same funds
         commitment.claims.creatorClaimed += amount;
 
-        IERC20(commitment.info.tokenAddress).transfer(msg.sender, amount);
+        if (commitment.info.tokenAddress == address(0)) {
+            (bool success, ) = msg.sender.call{value: amount}("");
+            require(success, "Native token transfer failed");
+        } else {
+            IERC20(commitment.info.tokenAddress).transfer(msg.sender, amount);
+        }
 
         emit CreatorClaimed(
             _id,
