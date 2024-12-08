@@ -12,7 +12,7 @@ event CommitmentCreated(
     bytes description
 );
 event CommitmentJoined(uint indexed id, address indexed participant);
-event CommitmentResolved(uint indexed id, address[] winners);
+event CommitmentResolved(uint indexed id, uint winners);
 event CommitmentCancelled(uint indexed id, address indexed cancelledBy);
 event CommitmentEmergencyCancelled(uint indexed id);
 
@@ -35,11 +35,7 @@ event WinnerClaimed(
     address indexed token,
     uint amount
 );
-event EmergencyStakesReturned(
-    uint indexed id,
-    uint participantCount,
-    address initiator
-);
+event EmergencyStakesReturned(uint indexed id, address initiator);
 
 // Fee events
 event ProtocolFeePaid(

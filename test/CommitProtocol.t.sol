@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
+import {console} from "forge-std/console.sol";
 import {CommitProtocol} from "../src/CommitProtocol.sol";
 import {TestToken} from "./TestToken.sol";
 
 contract CommitTest is Test {
     CommitProtocol private protocol;
     TestToken private token;
+
+    bytes32 root =
+        0x1ab0c6948a275349ae45a06aad66a8bd65ac18074615d53676c09b67809099e0;
+    bytes32[] public proof = new bytes32[](0);
+    uint leavesCount = 1;
 
     address userA = 0x0000000000000000000000000000000000000001;
     address userB = 0x0000000000000000000000000000000000000002;
@@ -17,7 +23,7 @@ contract CommitTest is Test {
     function setUp() public {
         protocol = new CommitProtocol();
         token = new TestToken();
-        protocol.initialize(address(this));
+        protocol.initialize(address(this), userD);
         protocol.addAllowedToken(address(token));
         vm.deal(userA, 1 ether);
         vm.deal(userB, 1 ether);
@@ -69,7 +75,7 @@ contract CommitTest is Test {
     function resolve(uint commitmentId, address[] memory winners) public {
         address creator = protocol.getCommitmentDetails(commitmentId).creator;
         vm.startPrank(creator);
-        protocol.resolveCommitment(commitmentId, winners);
+        protocol.resolveCommitmentMerklePath(commitmentId, root, leavesCount);
         vm.stopPrank();
     }
 
@@ -97,7 +103,7 @@ contract CommitTest is Test {
             protocol.getClaims(commitmentId).winnerClaim == 99 + 99,
             "Invalid Reward"
         ); // 99 = stake refund, 99 = earnings
-        protocol.claimRewards(commitmentId);
+        protocol.claimRewards(commitmentId, proof);
         uint balanceBAfter = token.balanceOf(userB);
         require(
             balanceBAfter - balanceBBefore == (99 + 99),
@@ -120,13 +126,13 @@ contract CommitTest is Test {
         vm.startPrank(userB);
         uint balanceBBefore = token.balanceOf(userB);
         require(
-            protocol.getClaims(commitmentId).winnerClaim == 99 + 49,
+            protocol.getClaims(commitmentId).winnerClaim == 99 + 198,
             "Invalid Reward"
         );
-        protocol.claimRewards(commitmentId);
+        protocol.claimRewards(commitmentId, proof);
         uint balanceBAfter = token.balanceOf(userB);
         require(
-            balanceBAfter - balanceBBefore == (99 + 49),
+            balanceBAfter - balanceBBefore == (99 + 198),
             "Fee not credited"
         ); // 99 = stake refund, 49 = earnings - creatorShare
         vm.stopPrank();
@@ -135,7 +141,6 @@ contract CommitTest is Test {
     function test_CreatorClaim() public {
         uint commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
-
         vm.startPrank(userA);
         uint balanceBefore = token.balanceOf(userA);
         protocol.claimCreator(commitmentId);
@@ -220,7 +225,7 @@ contract CommitTest is Test {
             protocol.getClaims(commitmentId).winnerClaim == 99 + 99,
             "Invalid Reward"
         ); // 99 = stake refund, 99 = earnings
-        protocol.claimRewards(commitmentId);
+        protocol.claimRewards(commitmentId, proof);
 
         vm.stopPrank();
     }
@@ -240,15 +245,15 @@ contract CommitTest is Test {
         uint256 balanceBBefore = userB.balance;
 
         require(
-            protocol.getClaims(commitmentId).winnerClaim == 99 + 49,
+            protocol.getClaims(commitmentId).winnerClaim == 99 + 198,
             "Invalid Reward"
         );
 
-        protocol.claimRewards(commitmentId);
+        protocol.claimRewards(commitmentId, proof);
         uint256 balanceBAfter = userB.balance;
 
         require(
-            balanceBAfter - balanceBBefore == (99 + 49),
+            balanceBAfter - balanceBBefore == (99 + 198),
             "Fee not credited"
         ); // 99 = stake refund, 49 = earnings - creatorShare
         vm.stopPrank();

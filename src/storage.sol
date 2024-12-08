@@ -28,11 +28,10 @@ contract Storage {
         uint winnerClaim; // Amount each winner can claim
         uint creatorClaim; // Total amount creator can claim
         uint creatorClaimed; // Amount creator has already claimed
+        bytes32 root; // Merkle root of the winners
     }
 
     struct CommitmentParticipants {
-        EnumerableSet.AddressSet participants; // List of participants
-        EnumerableSet.AddressSet winners; // List of winners
         mapping(address => bool) participantClaimed; // Tracking if a participant has claimed
     }
 
@@ -62,12 +61,13 @@ contract Storage {
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
 
-    uint public nextCommitmentId;
+    uint public commitmentIDCount;
     address public protocolFeeAddress;
     mapping(uint => Commitment) internal commitments;
     mapping(address => uint) public protocolFees;
     mapping(uint => uint) public commitmentTokenCount;
     EnumerableSet.AddressSet internal allowedTokens;
+    address public disperseContract;
 
     uint256[49] internal __gap;
 }
