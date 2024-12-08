@@ -36,4 +36,5 @@ error NotAParticipant();
 error OnlyCreatorCanClaim();
 error OnlyCreatorCanResolve();
 error OnlyCreatorOrOwnerCanCancel();
+error OnlyCreatorOrOwnerCanUpdateURI();
 error TokenNotAllowed(address token);

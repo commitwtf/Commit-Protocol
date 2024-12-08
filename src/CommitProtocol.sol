@@ -675,8 +675,19 @@ contract CommitProtocol is
         );
     }
 
-    function tokenURI(uint256 _id) public view returns (string memory) {
+    function tokenURI(
+        uint256 _id
+    ) public view override returns (string memory) {
         return commitments[_id].info.metadataURI;
+    }
+
+    function updateMetadataURI(uint256 _id, string memory _uri) public {
+        if (
+            msg.sender != commitments[_id].info.creator && msg.sender != owner()
+        ) {
+            revert OnlyCreatorOrOwnerCanUpdateURI();
+        }
+        commitments[_id].info.metadataURI = _uri;
     }
 
     /*//////////////////////////////////////////////////////////////
