@@ -12,22 +12,22 @@ enum CommitmentStatus {
 
 contract Storage {
     struct CommitmentInfo {
-        uint id; // Unique identifier
+        uint256 id; // Unique identifier
         address creator; // Address that created the commitment
         address tokenAddress; // Token used for staking
-        uint stakeAmount; // Amount each participant must stake
-        uint creatorFee; // Optional fee in ERC20 token
+        uint256 stakeAmount; // Amount each participant must stake
+        uint256 creatorFee; // Optional fee in ERC20 token
         bytes description; // Description of the commitment
-        uint joinDeadline; // Deadline to join
-        uint fulfillmentDeadline; // Deadline to fulfill commitment
+        uint256 joinDeadline; // Deadline to join
+        uint256 fulfillmentDeadline; // Deadline to fulfill commitment
         string metadataURI;
         CommitmentStatus status; // Current status of the commitment
     }
 
     struct Claims {
-        uint winnerClaim; // Amount each winner can claim
-        uint creatorClaim; // Total amount creator can claim
-        uint creatorClaimed; // Amount creator has already claimed
+        uint256 winnerClaim; // Amount each winner can claim
+        uint256 creatorClaim; // Total amount creator can claim
+        uint256 creatorClaimed; // Amount creator has already claimed
         bytes32 root; // Merkle root of the winners
     }
 
@@ -48,24 +48,24 @@ contract Storage {
     //////////////////////////////////////////////////////////////*/
 
     // Protocol fees
-    uint public constant PROTOCOL_JOIN_FEE = 0.0002 ether; // Fixed ETH fee for joining
-    uint public constant PROTOCOL_CREATE_FEE = 0.001 ether; // Fixed ETH fee for creating
-    uint public constant PROTOCOL_SHARE = 100; // 1% of stakes and creator fees
+    uint256 public constant PROTOCOL_JOIN_FEE = 0.0002 ether; // Fixed ETH fee for joining
+    uint256 public constant PROTOCOL_CREATE_FEE = 0.001 ether; // Fixed ETH fee for creating
+    uint256 public constant PROTOCOL_SHARE = 100; // 1% of stakes and creator fees
 
     // Other constants
-    uint public constant BASIS_POINTS = 10000; // For percentage calculations
-    uint public constant MAX_DESCRIPTION_LENGTH = 1000; // Characters
-    uint public constant MAX_DEADLINE_DURATION = 365 days; // Max time window
+    uint256 public constant BASIS_POINTS = 10000; // For percentage calculations
+    uint256 public constant MAX_DESCRIPTION_LENGTH = 1000; // Characters
+    uint256 public constant MAX_DEADLINE_DURATION = 365 days; // Max time window
 
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
 
-    uint public commitmentIDCount;
+    uint256 public commitmentIDCount;
     address public protocolFeeAddress;
-    mapping(uint => Commitment) internal commitments;
-    mapping(address => uint) public protocolFees;
-    mapping(uint => uint) public commitmentTokenCount;
+    mapping(uint256 => Commitment) internal commitments;
+    mapping(address => uint256) public protocolFees;
+    mapping(uint256 => uint256) public commitmentTokenCount;
     EnumerableSet.AddressSet internal allowedTokens;
     address public disperseContract;
 

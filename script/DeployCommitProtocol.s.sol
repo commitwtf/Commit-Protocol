@@ -10,18 +10,13 @@ contract DeployCommitProtocol is Script {
     function run() public {
         // Get protocol fee address from environment
         address protocolFeeAddress = vm.envAddress("PROTOCOL_FEE_ADDRESS");
-        address disperseContractAddress = vm.envAddress(
-            "DISPERSE_CONTRACT_ADDRESS"
-        );
+        address disperseContractAddress = vm.envAddress("DISPERSE_CONTRACT_ADDRESS");
         vm.startBroadcast();
 
         // Deploy UUPS Proxy
         address proxy = Upgrades.deployUUPSProxy(
             "CommitProtocol.sol",
-            abi.encodeCall(
-                CommitProtocol.initialize,
-                (protocolFeeAddress, disperseContractAddress)
-            )
+            abi.encodeCall(CommitProtocol.initialize, (protocolFeeAddress, disperseContractAddress))
         );
 
         vm.stopBroadcast();
