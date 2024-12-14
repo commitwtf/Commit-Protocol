@@ -5,6 +5,7 @@ import {Script} from "../lib/forge-std/src/Script.sol";
 import {console} from "../lib/forge-std/src/console.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 import {CommitProtocol} from "src/CommitProtocol.sol";
+import {CommitProtocolFactory} from "src/CommitProtocolFactory.sol";
 
 contract DeployCommitProtocol is Script {
     function run() public {
@@ -14,19 +15,14 @@ contract DeployCommitProtocol is Script {
             "DISPERSE_CONTRACT_ADDRESS"
         );
         vm.startBroadcast();
-
-        // Deploy UUPS Proxy
-        address proxy = Upgrades.deployUUPSProxy(
-            "CommitProtocol.sol",
-            abi.encodeCall(
-                CommitProtocol.initialize,
-                (protocolFeeAddress, disperseContractAddress)
-            )
+        CommitProtocol implementation = new CommitProtocol();
+        CommitProtocolFactory factory = new CommitProtocolFactory(
+            address(implementation)
         );
 
         vm.stopBroadcast();
 
-        console.log("CommitProtocol proxy deployed to:", proxy);
+        console.log("CommitProtocolFactory deployed to:", address(factory));
         console.log("Protocol fee address set to:", protocolFeeAddress);
     }
 }

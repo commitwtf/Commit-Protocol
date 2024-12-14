@@ -36,10 +36,19 @@ contract CommitProtocol is
     /// @param _protocolFeeAddress The address where protocol fees are sent
     /// @param _disperseContract The address of the disperse contract used for distributing rewards
     function initialize(
+        uint256 _id,
         address _protocolFeeAddress,
-        address _disperseContract
-    ) public initializer {
-        __Ownable_init(msg.sender);
+        address _disperseContract,
+        address sender,
+        address _tokenAddress,
+        uint256 _stakeAmount,
+        uint256 _creatorFee,
+        bytes calldata _description,
+        uint256 _joinDeadline,
+        uint256 _fulfillmentDeadline,
+        string calldata _metadataURI
+    ) public payable initializer {
+        __Ownable_init(sender);
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
         __Pausable_init();
@@ -50,144 +59,54 @@ contract CommitProtocol is
         );
         protocolFeeAddress = _protocolFeeAddress;
         disperseContract = _disperseContract;
+
+        require(
+            _description.length <= MAX_DESCRIPTION_LENGTH,
+            DescriptionTooLong()
+        );
+
+        require(_joinDeadline > block.timestamp, InvalidJoinDeadline());
+
+        require(
+            _fulfillmentDeadline > _joinDeadline &&
+                _fulfillmentDeadline <= block.timestamp + MAX_DEADLINE_DURATION,
+            InvalidFullfillmentDeadline()
+        );
+
+        require(_stakeAmount > 0, InvalidStakeAmount());
+
+        _createCommitment(
+            _id,
+            sender,
+            _tokenAddress,
+            _stakeAmount,
+            _creatorFee,
+            _description,
+            _joinDeadline,
+            _fulfillmentDeadline,
+            _metadataURI
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
                         COMMITMENT CORE FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Creates a commitment with specified parameters and stake requirements
-    /// @param _tokenAddress The address of the ERC20 token used for staking
-    /// @param _stakeAmount The amount each participant must stake
-    /// @param _creatorFee The fee required to join the commitment (optionally set by creator)
-    /// @param _description A brief description of the commitment
-    /// @param _joinDeadline The deadline for participants to join
-    /// @param _fulfillmentDeadline The deadline for fulfilling the commitment
-    /// @param _metadataURI The URI for the commitment's metadata
-    /// @dev Creator becomes first participant by staking tokens + paying creation fee in ETH
-    /// @return The ID of the newly created commitment
-    function createCommitment(
+    function _createCommitment(
+        uint256 _id,
+        address sender,
         address _tokenAddress,
-        uint256 _stakeAmount,
+        uint256 stakeAmount,
         uint256 _creatorFee,
         bytes calldata _description,
         uint256 _joinDeadline,
         uint256 _fulfillmentDeadline,
         string calldata _metadataURI
-    ) external payable nonReentrant whenNotPaused returns (uint256) {
-        if (msg.value != PROTOCOL_CREATE_FEE) {
-            revert InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE);
-        }
-        if (!allowedTokens.contains(_tokenAddress)) {
-            revert TokenNotAllowed(_tokenAddress);
-        }
-
-        if (_description.length > MAX_DESCRIPTION_LENGTH) {
-            revert DescriptionTooLong();
-        }
-        if (_joinDeadline <= block.timestamp) {
-            revert JoinDealineTooEarly();
-        }
-        if (
-            !(_fulfillmentDeadline > _joinDeadline &&
-                _fulfillmentDeadline <= block.timestamp + MAX_DEADLINE_DURATION)
-        ) {
-            revert InvalidFullfillmentDeadline();
-        }
-
-        if (_stakeAmount == 0) {
-            revert InvalidStakeAmount();
-        }
-
-        protocolFees[address(0)] += PROTOCOL_CREATE_FEE;
-
-        // Transfer stake amount for creator
-        IERC20(_tokenAddress).transferFrom(
-            msg.sender,
-            address(this),
-            _stakeAmount
-        );
-
-        uint256 commitmentId = commitmentIDCount++;
-
+    ) private {
         CommitmentInfo memory info;
-        info.id = commitmentId << 128;
-        info.creator = msg.sender;
+        info.id = _id;
+        info.creator = sender;
         info.tokenAddress = _tokenAddress;
-        info.stakeAmount = _stakeAmount;
-        info.creatorFee = _creatorFee;
-        info.description = _description;
-        info.joinDeadline = _joinDeadline;
-        info.fulfillmentDeadline = _fulfillmentDeadline;
-        info.metadataURI = _metadataURI;
-        info.status = CommitmentStatus.Active;
-
-        commitments[commitmentId].info = info;
-        ++commitmentTokenCount[commitmentId];
-        _safeMint(msg.sender, commitmentId << 128);
-
-        emit CommitmentCreated(
-            commitmentId,
-            msg.sender,
-            _tokenAddress,
-            _stakeAmount,
-            _creatorFee,
-            _description
-        );
-
-        emit CommitmentJoined(commitmentId, msg.sender);
-
-        return commitmentId;
-    }
-
-    /// @notice Creates a commitment using native tokens (ETH) for staking
-    /// @param _creatorFee The fee required to join the commitment (optionally set by creator)
-    /// @param _description A brief description of the commitment
-    /// @param _joinDeadline The deadline for participants to join
-    /// @param _fulfillmentDeadline The deadline for fulfilling the commitment
-    /// @param _metadataURI The URI for the commitment's metadata
-    /// @dev Creator becomes first participant by staking ETH + paying creation fee in ETH
-    /// @return The ID of the newly created commitment
-    function createCommitmentNativeToken(
-        uint256 _creatorFee,
-        bytes calldata _description,
-        uint256 _joinDeadline,
-        uint256 _fulfillmentDeadline,
-        string calldata _metadataURI
-    ) external payable nonReentrant whenNotPaused returns (uint256) {
-        if (msg.value < PROTOCOL_CREATE_FEE) {
-            revert InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE);
-        }
-
-        if (_description.length > MAX_DESCRIPTION_LENGTH) {
-            revert DescriptionTooLong();
-        }
-
-        if (_joinDeadline <= block.timestamp) {
-            revert InvalidJoinDeadline();
-        }
-
-        if (
-            !(_fulfillmentDeadline > _joinDeadline &&
-                _fulfillmentDeadline <= block.timestamp + MAX_DEADLINE_DURATION)
-        ) {
-            revert InvalidFullfillmentDeadline();
-        }
-
-        uint256 stakeAmount = msg.value - PROTOCOL_CREATE_FEE;
-
-        if (stakeAmount == 0) {
-            revert InvalidStakeAmount();
-        }
-
-        protocolFees[address(0)] += PROTOCOL_CREATE_FEE;
-
-        uint256 commitmentId = commitmentIDCount++;
-
-        CommitmentInfo memory info;
-        info.id = commitmentId << 128;
-        info.creator = msg.sender;
-        info.tokenAddress = address(0);
         info.stakeAmount = stakeAmount;
         info.creatorFee = _creatorFee;
         info.description = _description;
@@ -196,57 +115,51 @@ contract CommitProtocol is
         info.metadataURI = _metadataURI;
         info.status = CommitmentStatus.Active;
 
-        commitments[commitmentId].info = info;
-        ++commitmentTokenCount[commitmentId];
+        commitmentInfo = info;
 
-        _safeMint(msg.sender, commitmentId << 128);
+        _safeMint(sender, ++latestTokenId);
 
         emit CommitmentCreated(
-            commitmentId,
-            msg.sender,
-            address(0),
+            _id,
+            sender,
+            _tokenAddress,
             stakeAmount,
             _creatorFee,
             _description
         );
 
-        emit CommitmentJoined(commitmentId, msg.sender);
-
-        return commitmentId;
+        emit CommitmentJoined(_id, sender);
     }
-
     /// @notice Allows joining an active commitment
     /// @param _id The ID of the commitment to join
     /// @dev Participant must pay join fee + stake amount + creator fee (if set)
     function joinCommitment(
         uint256 _id
     ) external payable nonReentrant whenNotPaused {
-        if (_id >= commitmentIDCount) {
+        if (_id != commitmentInfo.id) {
             revert CommitmentNotExists(_id);
         }
         if (msg.value < PROTOCOL_JOIN_FEE) {
             revert InvalidJoinFee(msg.value, PROTOCOL_JOIN_FEE);
         }
 
-        Commitment storage commitment = commitments[_id];
-
-        if (commitment.info.status != CommitmentStatus.Active) {
-            revert InvalidState(commitment.info.status);
+        if (commitmentInfo.status != CommitmentStatus.Active) {
+            revert InvalidState(commitmentInfo.status);
         }
 
-        if (block.timestamp >= commitment.info.joinDeadline) {
+        if (block.timestamp >= commitmentInfo.joinDeadline) {
             revert JoiningPeriodEnded(
                 block.timestamp,
-                commitment.info.joinDeadline
+                commitmentInfo.joinDeadline
             );
         }
 
         protocolFees[address(0)] += PROTOCOL_JOIN_FEE;
 
-        uint256 totalAmount = commitment.info.stakeAmount;
+        uint256 totalAmount = commitmentInfo.stakeAmount;
 
         // Handle creator fee if set
-        uint256 creatorFee = commitment.info.creatorFee;
+        uint256 creatorFee = commitmentInfo.creatorFee;
         if (creatorFee > 0) {
             totalAmount += creatorFee;
 
@@ -254,27 +167,27 @@ contract CommitProtocol is
                 BASIS_POINTS;
 
             // Update accumulated token fees
-            protocolFees[commitment.info.tokenAddress] += protocolEarnings;
-            commitment.claims.creatorClaim += creatorFee - protocolEarnings;
+            protocolFees[commitmentInfo.tokenAddress] += protocolEarnings;
+            claims.creatorClaim += creatorFee - protocolEarnings;
         }
 
         // Transfer total amount in one transaction
 
-        if (commitment.info.tokenAddress == address(0)) {
+        if (commitmentInfo.tokenAddress == address(0)) {
             require(
-                msg.value - PROTOCOL_JOIN_FEE == commitment.info.stakeAmount,
+                msg.value - PROTOCOL_JOIN_FEE == commitmentInfo.stakeAmount,
                 "Invalid stake amount provided"
             );
         } else {
             // Transfer total amount in one transaction
-            IERC20(commitment.info.tokenAddress).transferFrom(
+            IERC20(commitmentInfo.tokenAddress).transferFrom(
                 msg.sender,
                 address(this),
                 totalAmount
             );
         }
 
-        uint256 tokenId = commitment.info.id + ++commitmentTokenCount[_id];
+        uint256 tokenId = commitmentInfo.id + ++latestTokenId;
         _safeMint(msg.sender, tokenId);
 
         emit CommitmentJoined(_id, msg.sender);
@@ -290,7 +203,7 @@ contract CommitProtocol is
         bytes32 _root,
         uint256 _leavesCount
     ) public nonReentrant whenNotPaused {
-        commitments[_id].claims.root = _root;
+        claims.root = _root;
         _resolveCommitment(_id, _leavesCount);
     }
 
@@ -303,15 +216,14 @@ contract CommitProtocol is
         uint256 winnerCount
     ) external nonReentrant whenNotPaused {
         _resolveCommitment(_id, winnerCount);
-        if (commitments[_id].info.tokenAddress != address(0)) {
-            IERC20(commitments[_id].info.tokenAddress).approve(
+        if (commitmentInfo.tokenAddress != address(0)) {
+            IERC20(commitmentInfo.tokenAddress).approve(
                 disperseContract,
                 type(uint256).max
             );
         } else {
             (bool success, ) = disperseContract.call{
-                value: commitments[_id].info.stakeAmount *
-                    commitmentTokenCount[_id]
+                value: commitmentInfo.stakeAmount * latestTokenId
             }("");
             if (!success) {
                 revert DisperseCallFailed();
@@ -324,24 +236,22 @@ contract CommitProtocol is
     /// @dev This calls resolveCommitment internally to handle refunds properly
     /// @dev Requires exactly 1 participant (the creator) since creator auto-joins on creation
     function cancelCommitment(uint256 _id) external whenNotPaused {
-        if (_id >= commitmentIDCount) {
+        if (_id >= commitmentInfo.id) {
             revert CommitmentDoesNotExist();
         }
 
-        Commitment storage commitment = commitments[_id];
-
-        if (msg.sender != commitment.info.creator && msg.sender != owner()) {
+        if (msg.sender != commitmentInfo.creator && msg.sender != owner()) {
             revert OnlyCreatorOrOwnerCanCancel();
         }
 
-        if (commitment.info.status != CommitmentStatus.Active) {
+        if (commitmentInfo.status != CommitmentStatus.Active) {
             revert CommitmentNotActive();
         }
 
-        commitment.info.joinDeadline = 0;
-        commitment.info.fulfillmentDeadline = 0;
+        commitmentInfo.joinDeadline = 0;
+        commitmentInfo.fulfillmentDeadline = 0;
 
-        commitment.info.status = CommitmentStatus.Cancelled;
+        commitmentInfo.status = CommitmentStatus.Cancelled;
 
         emit CommitmentCancelled(_id, msg.sender);
     }
@@ -352,18 +262,15 @@ contract CommitProtocol is
     function claimCancelled(
         uint256 tokenId
     ) external nonReentrant whenNotPaused {
-        uint256 _id = tokenId >> 128;
-        CommitmentInfo memory commitment = commitments[_id].info;
-
-        if (commitment.status != CommitmentStatus.Cancelled) {
+        if (commitmentInfo.status != CommitmentStatus.Cancelled) {
             revert CommitmentNotCancelled();
         }
 
-        if (commitments[_id].participants.participantClaimed[msg.sender]) {
+        if (participantClaimed[msg.sender]) {
             revert AlreadyClaimed();
         }
 
-        if (tokenId - (_id << 128) != commitmentTokenCount[_id]) {
+        if (tokenId - (commitmentInfo.id << 128) != latestTokenId) {
             revert InvalidTokenId();
         }
 
@@ -371,23 +278,23 @@ contract CommitProtocol is
             revert NotAParticipant();
         }
 
-        if (commitment.stakeAmount <= 0) {
+        if (commitmentInfo.stakeAmount <= 0) {
             revert NoRewardsToClaim();
         }
-        uint256 amount = commitment.stakeAmount;
+        uint256 amount = commitmentInfo.stakeAmount;
 
         // Mark as claimed before transfer to prerror reentrancy
-        commitments[_id].participants.participantClaimed[msg.sender] = true;
+        participantClaimed[msg.sender] = true;
 
-        if (commitment.tokenAddress == address(0)) {
+        if (commitmentInfo.tokenAddress == address(0)) {
             (bool success, ) = msg.sender.call{value: amount}("");
             require(success, "Native token transfer failed");
         } else {
-            IERC20(commitment.tokenAddress).transfer(msg.sender, amount);
+            IERC20(commitmentInfo.tokenAddress).transfer(msg.sender, amount);
         }
 
         emit EmergencyStakesReturned(
-            _id,
+            commitmentInfo.id,
             msg.sender // Who initiated the return
         );
     }
@@ -401,47 +308,41 @@ contract CommitProtocol is
         uint256 _id,
         bytes32[] calldata _proof
     ) external nonReentrant whenNotPaused {
-        Commitment storage commitment = commitments[_id];
-
-        if (commitment.info.status != CommitmentStatus.Resolved) {
+        if (commitmentInfo.status != CommitmentStatus.Resolved) {
             revert CommitmentNotResolved();
         }
 
-        if (commitment.participants.participantClaimed[msg.sender]) {
+        if (participantClaimed[msg.sender]) {
             revert AlreadyClaimed();
         }
         bytes32 leaf = keccak256(
             bytes.concat(keccak256(abi.encode(msg.sender)))
         );
-        bool isValidWinner = MerkleProof.verify(
-            _proof,
-            commitment.claims.root,
-            leaf
-        );
+        bool isValidWinner = MerkleProof.verify(_proof, claims.root, leaf);
 
         if (!isValidWinner) {
             revert InvalidWinner(msg.sender);
         }
 
-        uint256 amount = commitment.claims.winnerClaim;
+        uint256 amount = claims.winnerClaim;
         if (amount <= 0) {
             revert NoRewardsToClaim();
         }
 
         // Mark as claimed before transfer to prevent reentrancy
-        commitment.participants.participantClaimed[msg.sender] = true;
+        participantClaimed[msg.sender] = true;
 
-        if (commitment.info.tokenAddress == address(0)) {
+        if (commitmentInfo.tokenAddress == address(0)) {
             (bool success, ) = msg.sender.call{value: amount}("");
             require(success, "Native token transfer failed");
         } else {
-            IERC20(commitment.info.tokenAddress).transfer(msg.sender, amount);
+            IERC20(commitmentInfo.tokenAddress).transfer(msg.sender, amount);
         }
 
         emit RewardsClaimed(
             _id,
             msg.sender,
-            commitment.info.tokenAddress,
+            commitmentInfo.tokenAddress,
             amount
         );
     }
@@ -450,33 +351,30 @@ contract CommitProtocol is
     /// @dev Creator can claim while the commitment is in progress
     /// @param _id The commitment ID to claim creator fees from
     function claimCreator(uint256 _id) external nonReentrant whenNotPaused {
-        Commitment storage commitment = commitments[_id];
-
-        if (commitment.info.creator != msg.sender) {
+        if (commitmentInfo.creator != msg.sender) {
             revert OnlyCreatorCanClaim();
         }
 
-        uint256 amount = commitment.claims.creatorClaim -
-            commitment.claims.creatorClaimed;
+        uint256 amount = claims.creatorClaim - claims.creatorClaimed;
 
         if (amount <= 0) {
             revert NoCreatorFeesToClaim();
         }
 
         // Update how much they have claimed to prevent reclaiming the same funds
-        commitment.claims.creatorClaimed += amount;
+        claims.creatorClaimed += amount;
 
-        if (commitment.info.tokenAddress == address(0)) {
+        if (commitmentInfo.tokenAddress == address(0)) {
             (bool success, ) = msg.sender.call{value: amount}("");
             require(success, "Native token transfer failed");
         } else {
-            IERC20(commitment.info.tokenAddress).transfer(msg.sender, amount);
+            IERC20(commitmentInfo.tokenAddress).transfer(msg.sender, amount);
         }
 
         emit CreatorClaimed(
             _id,
             msg.sender,
-            commitment.info.tokenAddress,
+            commitmentInfo.tokenAddress,
             amount
         );
     }
@@ -486,44 +384,43 @@ contract CommitProtocol is
     /// @param winnerCount The number of successful participants
     /// @dev Only creator can resolve, must be after fulfillment deadline
     function _resolveCommitment(uint256 _id, uint256 winnerCount) internal {
-        Commitment storage commitment = commitments[_id];
-        if (msg.sender != commitment.info.creator) {
+        if (msg.sender != commitmentInfo.creator) {
             revert OnlyCreatorCanResolve();
         }
 
-        if (commitment.info.status != CommitmentStatus.Active) {
+        if (commitmentInfo.status != CommitmentStatus.Active) {
             revert CommitmentNotActive();
         }
 
         // TODO: fix, insecure
-        if (block.timestamp <= commitment.info.fulfillmentDeadline) {
+        if (block.timestamp <= commitmentInfo.fulfillmentDeadline) {
             revert FulfillmentPeriodNotEnded(
                 block.timestamp,
-                commitment.info.fulfillmentDeadline
+                commitmentInfo.fulfillmentDeadline
             );
         }
         // Process participants
         // Use local var to save gas so we dont have to read `commitment.failedCount` every time
-        uint256 failedCount = commitmentTokenCount[_id] - winnerCount;
+        uint256 failedCount = latestTokenId - winnerCount;
 
-        uint256 protocolStakeFee = (commitment.info.stakeAmount *
+        uint256 protocolStakeFee = (commitmentInfo.stakeAmount *
             PROTOCOL_SHARE) / BASIS_POINTS;
 
         // Protocol earns % of all commit stakes, won or lost
-        protocolFees[commitment.info.tokenAddress] +=
+        protocolFees[commitmentInfo.tokenAddress] +=
             protocolStakeFee *
-            commitmentTokenCount[_id];
+            latestTokenId;
 
         // Distribute stakes among winners, less protocol fees
-        uint256 winnerStakeRefund = commitment.info.stakeAmount -
+        uint256 winnerStakeRefund = commitmentInfo.stakeAmount -
             protocolStakeFee;
-        uint256 winnerStakeEarnings = ((commitment.info.stakeAmount -
+        uint256 winnerStakeEarnings = ((commitmentInfo.stakeAmount -
             protocolStakeFee) * failedCount) / winnerCount;
 
-        commitment.claims.winnerClaim = winnerStakeRefund + winnerStakeEarnings;
+        claims.winnerClaim = winnerStakeRefund + winnerStakeEarnings;
 
         // Mark commitment as resolved
-        commitment.info.status = CommitmentStatus.Resolved;
+        commitmentInfo.status = CommitmentStatus.Resolved;
 
         emit CommitmentResolved(_id, winnerCount);
     }
@@ -531,22 +428,6 @@ contract CommitProtocol is
     /*//////////////////////////////////////////////////////////////
                             ADMIN FUNCTIONS
     //////////////////////////////////////////////////////////////*/
-
-    /// @notice Allow a token for use in future commitments
-    /// @param token The address of the token
-    function addAllowedToken(address token) external onlyOwner {
-        allowedTokens.add(token);
-
-        emit TokenListUpdated(token, true);
-    }
-
-    /// @notice Prevent a token for use in future commitments
-    /// @param token The address of the token
-    function removeAllowedToken(address token) external onlyOwner {
-        allowedTokens.remove(token);
-
-        emit TokenListUpdated(token, false);
-    }
 
     /// @notice Updates the protocol fee address
     /// @param _newAddress The new address for protocol fees
@@ -627,22 +508,6 @@ contract CommitProtocol is
                             VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Gets the details of a commitment
-    /// @param _id The ID of the commitment
-    /// @return The commitment info struct
-    function getCommitmentDetails(
-        uint256 _id
-    ) external view returns (CommitmentInfo memory) {
-        return commitments[_id].info;
-    }
-
-    /// @notice Gets the claims info for a commitment
-    /// @param _id The ID of the commitment
-    /// @return The claims struct containing reward distribution info
-    function getClaims(uint256 _id) external view returns (Claims memory) {
-        return commitments[_id].claims;
-    }
-
     /// @notice Checks if a participant has claimed their rewards/refund
     /// @param commitmentId The ID of the commitment
     /// @param participant The address of the participant
@@ -651,10 +516,7 @@ contract CommitProtocol is
         uint256 commitmentId,
         address participant
     ) public view returns (bool) {
-        return
-            commitments[commitmentId].participants.participantClaimed[
-                participant
-            ];
+        return participantClaimed[participant];
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -682,16 +544,14 @@ contract CommitProtocol is
     function tokenURI(
         uint256 _id
     ) public view override returns (string memory) {
-        return commitments[_id >> 128].info.metadataURI;
+        return commitmentInfo.metadataURI;
     }
 
-    function updateMetadataURI(uint256 _id, string memory _uri) public {
-        if (
-            msg.sender != commitments[_id].info.creator && msg.sender != owner()
-        ) {
+    function updateMetadataURI(string memory _uri) public {
+        if (msg.sender != commitmentInfo.creator && msg.sender != owner()) {
             revert OnlyCreatorOrOwnerCanUpdateURI();
         }
-        commitments[_id].info.metadataURI = _uri;
+        commitmentInfo.metadataURI = _uri;
     }
 
     /*//////////////////////////////////////////////////////////////

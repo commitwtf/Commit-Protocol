@@ -28,7 +28,7 @@ error InvalidState(CommitmentStatus status);
 error InvalidTokenId();
 error InvalidWinner(address winner);
 error InvalidWinnerAddress();
-error JoinDealineTooEarly();
+error JoinDeadlineTooEarly();
 error JoiningPeriodEnded(uint256 currentTime, uint256 deadline);
 error NoCreatorFeesToClaim();
 error NoRewardsToClaim();

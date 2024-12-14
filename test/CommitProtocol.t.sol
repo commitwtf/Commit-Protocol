@@ -23,8 +23,6 @@ contract CommitTest is Test {
     function setUp() public {
         protocol = new CommitProtocol();
         token = new TestToken();
-        protocol.initialize(address(this), userD);
-        protocol.addAllowedToken(address(token));
         vm.deal(userA, 1 ether);
         vm.deal(userB, 1 ether);
         vm.deal(userC, 1 ether);
