@@ -32,104 +32,60 @@ contract CommitProtocol is
                             INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Initializes the contract with the protocol fee address
-    /// @param _protocolFeeAddress The address where protocol fees are sent
     /// @param _disperseContract The address of the disperse contract used for distributing rewards
     function initialize(
-        uint256 _id,
-        address _protocolFeeAddress,
-        address _disperseContract,
-        address sender,
-        address _tokenAddress,
-        uint256 _stakeAmount,
-        uint256 _creatorFee,
-        bytes calldata _description,
-        uint256 _joinDeadline,
-        uint256 _fulfillmentDeadline,
-        string calldata _metadataURI
+        CommitmentInfo memory _commitmentInfo,
+        address _disperseContract
     ) public payable initializer {
-        __Ownable_init(sender);
+        __Ownable_init(_commitmentInfo.creator);
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
         __Pausable_init();
         __ERC721_init("Commitment", "COMMITMENT");
-        require(
-            _protocolFeeAddress != address(0),
-            "Invalid protocol fee address"
+
+        disperseContract = disperseContract;
+
+        if (_commitmentInfo.description.length > MAX_DESCRIPTION_LENGTH) {
+            revert DescriptionTooLong();
+        }
+
+        if (_commitmentInfo.joinDeadline <= block.timestamp) {
+            revert InvalidJoinDeadline();
+        }
+
+        if (
+            _commitmentInfo.fulfillmentDeadline <=
+            _commitmentInfo.joinDeadline ||
+            _commitmentInfo.fulfillmentDeadline >
+            block.timestamp + MAX_DEADLINE_DURATION
+        ) {
+            revert InvalidFullfillmentDeadline();
+        }
+
+        if (_commitmentInfo.stakeAmount == 0) {
+            revert InvalidStakeAmount();
+        }
+
+        commitmentInfo = _commitmentInfo;
+
+        _safeMint(commitmentInfo.creator, ++latestTokenId);
+
+        emit CommitmentCreated(
+            _commitmentInfo.id,
+            _commitmentInfo.creator,
+            _commitmentInfo.tokenAddress,
+            _commitmentInfo.stakeAmount,
+            _commitmentInfo.creatorFee,
+            _commitmentInfo.description
         );
-        protocolFeeAddress = _protocolFeeAddress;
-        disperseContract = _disperseContract;
 
-        require(
-            _description.length <= MAX_DESCRIPTION_LENGTH,
-            DescriptionTooLong()
-        );
-
-        require(_joinDeadline > block.timestamp, InvalidJoinDeadline());
-
-        require(
-            _fulfillmentDeadline > _joinDeadline &&
-                _fulfillmentDeadline <= block.timestamp + MAX_DEADLINE_DURATION,
-            InvalidFullfillmentDeadline()
-        );
-
-        require(_stakeAmount > 0, InvalidStakeAmount());
-
-        _createCommitment(
-            _id,
-            sender,
-            _tokenAddress,
-            _stakeAmount,
-            _creatorFee,
-            _description,
-            _joinDeadline,
-            _fulfillmentDeadline,
-            _metadataURI
-        );
+        emit CommitmentJoined(_commitmentInfo.id, _commitmentInfo.creator);
     }
 
     /*//////////////////////////////////////////////////////////////
                         COMMITMENT CORE FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    function _createCommitment(
-        uint256 _id,
-        address sender,
-        address _tokenAddress,
-        uint256 stakeAmount,
-        uint256 _creatorFee,
-        bytes calldata _description,
-        uint256 _joinDeadline,
-        uint256 _fulfillmentDeadline,
-        string calldata _metadataURI
-    ) private {
-        CommitmentInfo memory info;
-        info.id = _id;
-        info.creator = sender;
-        info.tokenAddress = _tokenAddress;
-        info.stakeAmount = stakeAmount;
-        info.creatorFee = _creatorFee;
-        info.description = _description;
-        info.joinDeadline = _joinDeadline;
-        info.fulfillmentDeadline = _fulfillmentDeadline;
-        info.metadataURI = _metadataURI;
-        info.status = CommitmentStatus.Active;
-
-        commitmentInfo = info;
-
-        _safeMint(sender, ++latestTokenId);
-
-        emit CommitmentCreated(
-            _id,
-            sender,
-            _tokenAddress,
-            stakeAmount,
-            _creatorFee,
-            _description
-        );
-
-        emit CommitmentJoined(_id, sender);
-    }
     /// @notice Allows joining an active commitment
     /// @param _id The ID of the commitment to join
     /// @dev Participant must pay join fee + stake amount + creator fee (if set)
@@ -431,7 +387,9 @@ contract CommitProtocol is
 
     /// @notice Updates the protocol fee address
     /// @param _newAddress The new address for protocol fees
-    function setProtocolFeeAddress(address _newAddress) external onlyOwner {
+    function setProtocolFeeAddress(
+        address payable _newAddress
+    ) external onlyOwner {
         require(_newAddress != address(0), "Invalid protocol fee address");
 
         address oldAddress = protocolFeeAddress;

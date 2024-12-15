@@ -47,7 +47,6 @@ contract Storage {
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
-
     address public protocolFeeAddress;
     mapping(address => uint256) public protocolFees;
 

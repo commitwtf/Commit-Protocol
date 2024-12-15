@@ -7,6 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {CommitProtocol} from "./CommitProtocol.sol";
 import "./errors.sol";
 import "./logger.sol";
 /// @title CommitProtocol — an onchain accountability protocol
@@ -20,7 +21,7 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
     address public implementation;
     uint256 public commitmentId;
     uint256 public protocolFee;
-    address public protocolFeeAddress;
+    address payable public protocolFeeAddress;
     uint256 public constant PROTOCOL_CREATE_FEE = 0.001 ether; // Fixed ETH fee for creating
     EnumerableSet.AddressSet internal allowedTokens;
 
@@ -81,7 +82,6 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
         bytes memory initData = abi.encodeWithSignature(
             "initialize(uint256,address,address,address,address,uint256,uint256,bytes,uint256,uint256,string)",
             ++commitmentId,
-            protocolFeeAddress,
             _disperseContract,
             msg.sender,
             _tokenAddress,
@@ -95,6 +95,9 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
 
         address proxy = address(new ERC1967Proxy(implementation, initData));
         commitments.push(proxy);
+        CommitProtocol(payable(proxy)).setProtocolFeeAddress(
+            protocolFeeAddress
+        );
 
         // Transfer stake amount for creator
         IERC20(_tokenAddress).transferFrom(
@@ -113,7 +116,7 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
     }
 
     function setProtocolFeeAddress(
-        address _protocolFeeAddress
+        address payable _protocolFeeAddress
     ) external onlyOwner {
         protocolFeeAddress = _protocolFeeAddress;
     }
