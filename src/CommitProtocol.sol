@@ -13,11 +13,11 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 import {Storage} from "./storage.sol";
 import "./errors.sol";
 import "./logger.sol";
-/// @title CommitProtocol — an onchain accountability protocol
+
+/// @title CommitProtocol - An onchain accountability protocol
 /// @notice Enables users to create and participate in commitment-based challenges
 /// @dev Implements stake management, fee distribution, and emergency controls
 /// @author Rachit Anand Srivastava (@privacy_prophet)
-
 contract CommitProtocol is
     UUPSUpgradeable,
     ReentrancyGuardUpgradeable,
@@ -32,6 +32,8 @@ contract CommitProtocol is
                             INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Initializes the contract with commitment info and disperse contract
+    /// @param _commitmentInfo Initial commitment configuration
     /// @param _disperseContract The address of the disperse contract used for distributing rewards
     function initialize(
         CommitmentInfo memory _commitmentInfo,
@@ -43,7 +45,7 @@ contract CommitProtocol is
         __Pausable_init();
         __ERC721_init("Commitment", "COMMITMENT");
 
-        disperseContract = disperseContract;
+        disperseContract = _disperseContract;
 
         if (_commitmentInfo.description.length > MAX_DESCRIPTION_LENGTH) {
             revert DescriptionTooLong();
@@ -86,15 +88,9 @@ contract CommitProtocol is
                         COMMITMENT CORE FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Allows joining an active commitment
-    /// @param _id The ID of the commitment to join
+    /// @notice Allows participants to join a commitment by paying required fees
     /// @dev Participant must pay join fee + stake amount + creator fee (if set)
-    function joinCommitment(
-        uint256 _id
-    ) external payable nonReentrant whenNotPaused {
-        if (_id != commitmentInfo.id) {
-            revert CommitmentNotExists(_id);
-        }
+    function joinCommitment() external payable nonReentrant whenNotPaused {
         if (msg.value < PROTOCOL_JOIN_FEE) {
             revert InvalidJoinFee(msg.value, PROTOCOL_JOIN_FEE);
         }
@@ -128,14 +124,12 @@ contract CommitProtocol is
         }
 
         // Transfer total amount in one transaction
-
         if (commitmentInfo.tokenAddress == address(0)) {
             require(
                 msg.value - PROTOCOL_JOIN_FEE == commitmentInfo.stakeAmount,
                 "Invalid stake amount provided"
             );
         } else {
-            // Transfer total amount in one transaction
             IERC20(commitmentInfo.tokenAddress).transferFrom(
                 msg.sender,
                 address(this),
@@ -146,7 +140,7 @@ contract CommitProtocol is
         uint256 tokenId = commitmentInfo.id + ++latestTokenId;
         _safeMint(msg.sender, tokenId);
 
-        emit CommitmentJoined(_id, msg.sender);
+        emit CommitmentJoined(commitmentInfo.id, msg.sender);
     }
 
     /// @notice Resolves commitment using merkle path for winner verification
@@ -214,7 +208,7 @@ contract CommitProtocol is
 
     /// @notice Claims participant stake after emergency cancellation
     /// @dev No protocol fees are assessed however join fees are non-refundable
-    /// @param tokenId The nft ID to claim stake from
+    /// @param tokenId The NFT ID to claim stake from
     function claimCancelled(
         uint256 tokenId
     ) external nonReentrant whenNotPaused {
@@ -239,7 +233,7 @@ contract CommitProtocol is
         }
         uint256 amount = commitmentInfo.stakeAmount;
 
-        // Mark as claimed before transfer to prerror reentrancy
+        // Mark as claimed before transfer to prevent reentrancy
         participantClaimed[msg.sender] = true;
 
         if (commitmentInfo.tokenAddress == address(0)) {
@@ -355,8 +349,8 @@ contract CommitProtocol is
                 commitmentInfo.fulfillmentDeadline
             );
         }
-        // Process participants
-        // Use local var to save gas so we dont have to read `commitment.failedCount` every time
+
+        // Calculate failed participants
         uint256 failedCount = latestTokenId - winnerCount;
 
         uint256 protocolStakeFee = (commitmentInfo.stakeAmount *
@@ -398,7 +392,7 @@ contract CommitProtocol is
         emit ProtocolFeeAddressUpdated(oldAddress, _newAddress);
     }
 
-    /// @notice Claims accumulated fees for a specific token. Used by protocol owner to withdraw their fees
+    /// @notice Claims accumulated fees for a specific token
     /// @param token The address of the token to claim fees for
     /// @dev Protocol owner claims via protocolFeeAddress
     /// @dev Protocol fees come from join fees (PROTOCOL_SHARE%) and stakes (PROTOCOL_SHARE%)
@@ -448,14 +442,14 @@ contract CommitProtocol is
         emit EmergencyWithdrawal(address(token), amount);
     }
 
-    /// @notice Emergency function to pause any function that uses `whenNotPaused`
+    /// @notice Emergency function to pause any function that uses whenNotPaused
     function emergencyPauseAll() external onlyOwner {
         _pause();
 
         emit ContractPaused();
     }
 
-    /// @notice Emergency function to unpause all functions blocked on `whenNotPaused`
+    /// @notice Emergency function to unpause all functions blocked on whenNotPaused
     function emergencyUnpauseAll() external onlyOwner {
         _unpause();
 
@@ -467,11 +461,9 @@ contract CommitProtocol is
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Checks if a participant has claimed their rewards/refund
-    /// @param commitmentId The ID of the commitment
     /// @param participant The address of the participant
     /// @return True if participant has claimed, false otherwise
     function isParticipantClaimed(
-        uint256 commitmentId,
         address participant
     ) public view returns (bool) {
         return participantClaimed[participant];
@@ -499,12 +491,17 @@ contract CommitProtocol is
         );
     }
 
+    /// @notice Returns the metadata URI for a given token ID
+    /// @param _id The token ID to get the URI for
+    /// @return The metadata URI string
     function tokenURI(
         uint256 _id
     ) public view override returns (string memory) {
         return commitmentInfo.metadataURI;
     }
 
+    /// @notice Updates the metadata URI for the commitment
+    /// @param _uri The new metadata URI
     function updateMetadataURI(string memory _uri) public {
         if (msg.sender != commitmentInfo.creator && msg.sender != owner()) {
             revert OnlyCreatorOrOwnerCanUpdateURI();

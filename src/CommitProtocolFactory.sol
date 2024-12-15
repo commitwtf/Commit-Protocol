@@ -8,13 +8,14 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {CommitProtocol} from "./CommitProtocol.sol";
+import {console} from "forge-std/console.sol";
 import "./errors.sol";
 import "./logger.sol";
-/// @title CommitProtocol — an onchain accountability protocol
-/// @notice Enables users to create and participate in commitment-based challenges
-/// @dev Implements stake management, fee distribution, and emergency controls
-/// @author Rachit Anand Srivastava (@privacy_prophet)
 
+/// @title CommitProtocolFactory - Factory contract for deploying CommitProtocol instances
+/// @notice Enables users to create new commitment-based challenges by deploying proxy contracts
+/// @dev Implements proxy deployment, token allowlist, and emergency controls
+/// @author Rachit Anand Srivastava (@privacy_prophet)
 contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -22,15 +23,17 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
     uint256 public commitmentId;
     uint256 public protocolFee;
     address payable public protocolFeeAddress;
-    uint256 public constant PROTOCOL_CREATE_FEE = 0.001 ether; // Fixed ETH fee for creating
+    uint256 public constant PROTOCOL_CREATE_FEE = 0.001 ether; // Fixed ETH fee for creating commitments
     EnumerableSet.AddressSet internal allowedTokens;
 
     address[] public commitments;
+
     /*//////////////////////////////////////////////////////////////
                             INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
-    /// @param _implementation The address of the implementation contract
+    /// @notice Initializes the factory with an implementation contract
+    /// @param _implementation The address of the implementation contract to clone
     constructor(address _implementation) Ownable(msg.sender) {
         require(
             _implementation != address(0),
@@ -43,16 +46,16 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
                         COMMITMENT CORE FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Creates a commitment with specified parameters and stake requirements
-    /// @param _tokenAddress The address of the ERC20 token used for staking
+    /// @notice Creates a new commitment by deploying a proxy contract
+    /// @param _tokenAddress The ERC20 token used for staking (address(0) for ETH)
+    /// @param _disperseContract The contract used for distributing rewards
     /// @param _stakeAmount The amount each participant must stake
-    /// @param _creatorFee The fee required to join the commitment (optionally set by creator)
-    /// @param _description A brief description of the commitment
-    /// @param _joinDeadline The deadline for participants to join
-    /// @param _fulfillmentDeadline The deadline for fulfilling the commitment
-    /// @param _metadataURI The URI for the commitment's metadata
-    /// @dev Creator becomes first participant by staking tokens + paying creation fee in ETH
-    /// @return The ID of the newly created commitment
+    /// @param _creatorFee Additional fee required to join (set by creator)
+    /// @param _description Description of the commitment requirements
+    /// @param _joinDeadline Timestamp when joining period ends
+    /// @param _fulfillmentDeadline Timestamp when commitment period ends
+    /// @param _metadataURI URI pointing to commitment metadata
+    /// @dev Deploys proxy, initializes it, and handles creator's stake
     function createCommitment(
         address _tokenAddress,
         address _disperseContract,
@@ -62,7 +65,7 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
         uint256 _joinDeadline,
         uint256 _fulfillmentDeadline,
         string calldata _metadataURI
-    ) external payable nonReentrant whenNotPaused returns (uint256) {
+    ) external payable nonReentrant whenNotPaused {
         if (msg.value != protocolFee) {
             revert InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE);
         }
@@ -107,40 +110,44 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
         );
     }
 
-    /// @notice Allow a token for use in future commitments
-    /// @param token The address of the token
+    /// @notice Adds a token to the allowlist for use in commitments
+    /// @param token The token contract address to allow
     function addAllowedToken(address token) external onlyOwner {
         allowedTokens.add(token);
 
         emit TokenListUpdated(token, true);
     }
 
+    /// @notice Sets the address that receives protocol fees
+    /// @param _protocolFeeAddress The address to receive fees
     function setProtocolFeeAddress(
         address payable _protocolFeeAddress
     ) external onlyOwner {
         protocolFeeAddress = _protocolFeeAddress;
     }
 
+    /// @notice Updates the implementation contract for future deployments
+    /// @param _implementation The new implementation contract address
     function updateImplementation(address _implementation) external onlyOwner {
         implementation = _implementation;
     }
 
-    /// @notice Prevent a token for use in future commitments
-    /// @param token The address of the token
+    /// @notice Removes a token from the allowlist
+    /// @param token The token contract address to disallow
     function removeAllowedToken(address token) external onlyOwner {
         allowedTokens.remove(token);
 
         emit TokenListUpdated(token, false);
     }
 
-    /// @notice Emergency function to pause any function that uses `whenNotPaused`
+    /// @notice Pauses core contract functionality
     function emergencyPauseAll() external onlyOwner {
         _pause();
 
         emit ContractPaused();
     }
 
-    /// @notice Emergency function to unpause all functions blocked on `whenNotPaused`
+    /// @notice Resumes core contract functionality
     function emergencyUnpauseAll() external onlyOwner {
         _unpause();
 
