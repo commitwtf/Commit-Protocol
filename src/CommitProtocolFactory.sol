@@ -71,8 +71,9 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
         }
 
         if (_stakeAmount == 0) revert InvalidStakeAmount();
-        if (!allowedTokens.contains(_tokenAddress))
+        if (!allowedTokens.contains(_tokenAddress)) {
             revert TokenNotAllowed(_tokenAddress);
+        }
 
         protocolFee += PROTOCOL_CREATE_FEE;
 
@@ -97,7 +98,7 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
         );
 
         address proxy = Clones.clone(implementation);
-        (bool success, ) = proxy.call(initData);
+        (bool success,) = proxy.call(initData);
         if (!success) revert InitializationFailed();
 
         IERC20(_tokenAddress).transferFrom(msg.sender, proxy, _stakeAmount);
@@ -112,9 +113,7 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Sets the address that receives protocol fees
     /// @param _protocolFeeAddress The address to receive fees
-    function setProtocolFeeAddress(
-        address payable _protocolFeeAddress
-    ) external onlyOwner {
+    function setProtocolFeeAddress(address payable _protocolFeeAddress) external onlyOwner {
         protocolFeeAddress = _protocolFeeAddress;
     }
 
