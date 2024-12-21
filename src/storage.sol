@@ -9,6 +9,7 @@ enum CommitmentStatus {
     Cancelled,
     EmergencyCancelled
 }
+
 struct CommitmentInfo {
     uint256 id; // Unique identifier
     address creator; // Address that created the commitment

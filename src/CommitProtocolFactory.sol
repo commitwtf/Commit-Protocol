@@ -36,10 +36,7 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
     /// @notice Initializes the factory with an implementation contract
     /// @param _implementation The address of the implementation contract to clone
     constructor(address _implementation) Ownable(msg.sender) {
-        require(
-            _implementation != address(0),
-            "Invalid implementation address"
-        );
+        require(_implementation != address(0), "Invalid implementation address");
         implementation = _implementation;
     }
 
@@ -107,11 +104,7 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
         commitments.push(proxy);
 
         // Transfer stake amount for creator
-        IERC20(_tokenAddress).transferFrom(
-            msg.sender,
-            address(proxy),
-            _stakeAmount
-        );
+        IERC20(_tokenAddress).transferFrom(msg.sender, address(proxy), _stakeAmount);
     }
 
     /// @notice Adds a token to the allowlist for use in commitments
@@ -124,9 +117,7 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Sets the address that receives protocol fees
     /// @param _protocolFeeAddress The address to receive fees
-    function setProtocolFeeAddress(
-        address payable _protocolFeeAddress
-    ) external onlyOwner {
+    function setProtocolFeeAddress(address payable _protocolFeeAddress) external onlyOwner {
         protocolFeeAddress = _protocolFeeAddress;
     }
 

@@ -84,13 +84,7 @@ contract CommitProtocolFactoryTest is Test {
         testToken.deal(100 ether);
         testToken.approve(address(factory), 10 ether);
 
-        vm.expectRevert(
-            abi.encodeWithSignature(
-                "InvalidCreationFee(uint256,uint256)",
-                0,
-                0.001 ether
-            )
-        );
+        vm.expectRevert(abi.encodeWithSignature("InvalidCreationFee(uint256,uint256)", 0, 0.001 ether));
         factory.createCommitment{value: 0}(
             address(testToken),
             disperseContract,

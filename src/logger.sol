@@ -22,49 +22,20 @@ event CommitmentCancelled(address indexed cancelledBy);
 event CommitmentEmergencyCancelled(uint256 indexed id);
 
 // Claim events
-event RewardsClaimed(
-    uint256 indexed id,
-    address indexed participant,
-    address indexed token,
-    uint256 amount
-);
+event RewardsClaimed(uint256 indexed id, address indexed participant, address indexed token, uint256 amount);
 
-event CreatorClaimed(
-    uint256 indexed id,
-    address indexed creator,
-    address indexed token,
-    uint256 amount
-);
+event CreatorClaimed(uint256 indexed id, address indexed creator, address indexed token, uint256 amount);
 
-event WinnerClaimed(
-    uint256 indexed id,
-    address indexed winner,
-    address indexed token,
-    uint256 amount
-);
+event WinnerClaimed(uint256 indexed id, address indexed winner, address indexed token, uint256 amount);
 
 event EmergencyStakesReturned(uint256 indexed id, address initiator);
 
 // Fee events
-event ProtocolFeePaid(
-    uint256 indexed id,
-    address indexed participant,
-    address indexed token,
-    uint256 amount
-);
+event ProtocolFeePaid(uint256 indexed id, address indexed participant, address indexed token, uint256 amount);
 
-event CreatorFeePaid(
-    uint256 indexed id,
-    address indexed participant,
-    address indexed token,
-    uint256 amount
-);
+event CreatorFeePaid(uint256 indexed id, address indexed participant, address indexed token, uint256 amount);
 
-event FeesClaimed(
-    address indexed recipient,
-    address indexed token,
-    uint256 amount
-);
+event FeesClaimed(address indexed recipient, address indexed token, uint256 amount);
 
 // Admin events
 event TokenListUpdated(address indexed token, bool allowed);

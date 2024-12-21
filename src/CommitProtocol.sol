@@ -57,10 +57,8 @@ contract CommitProtocol is
         }
 
         if (
-            _commitment_info.fulfillmentDeadline <=
-            _commitment_info.joinDeadline ||
-            _commitment_info.fulfillmentDeadline >
-            block.timestamp + MAX_DEADLINE_DURATION
+            _commitment_info.fulfillmentDeadline <= _commitment_info.joinDeadline
+                || _commitment_info.fulfillmentDeadline > block.timestamp + MAX_DEADLINE_DURATION
         ) {
             revert InvalidFullfillmentDeadline();
         }
@@ -102,10 +100,7 @@ contract CommitProtocol is
         }
 
         if (block.timestamp >= commitmentInfo.joinDeadline) {
-            revert JoiningPeriodEnded(
-                block.timestamp,
-                commitmentInfo.joinDeadline
-            );
+            revert JoiningPeriodEnded(block.timestamp, commitmentInfo.joinDeadline);
         }
 
         protocolFees[address(0)] += PROTOCOL_JOIN_FEE;
@@ -117,8 +112,7 @@ contract CommitProtocol is
         if (_creator_fee > 0) {
             _total_amount += _creator_fee;
 
-            uint256 _protocol_earnings = (_creator_fee * PROTOCOL_SHARE) /
-                BASIS_POINTS;
+            uint256 _protocol_earnings = (_creator_fee * PROTOCOL_SHARE) / BASIS_POINTS;
 
             // Update accumulated token fees
             protocolFees[commitmentInfo.tokenAddress] += _protocol_earnings;
@@ -127,16 +121,9 @@ contract CommitProtocol is
 
         // Transfer total amount in one transaction
         if (commitmentInfo.tokenAddress == address(0)) {
-            require(
-                msg.value - PROTOCOL_JOIN_FEE == commitmentInfo.stakeAmount,
-                "Invalid stake amount provided"
-            );
+            require(msg.value - PROTOCOL_JOIN_FEE == commitmentInfo.stakeAmount, "Invalid stake amount provided");
         } else {
-            IERC20(commitmentInfo.tokenAddress).transferFrom(
-                msg.sender,
-                address(this),
-                _total_amount
-            );
+            IERC20(commitmentInfo.tokenAddress).transferFrom(msg.sender, address(this), _total_amount);
         }
 
         uint256 _token_id = commitmentInfo.id + ++latestTokenId;
@@ -149,10 +136,7 @@ contract CommitProtocol is
     /// @param _root The merkle root of the participants who succeeded
     /// @param _leaves_count The number of successful participants
     /// @dev Only creator can resolve, must be after fulfillment deadline
-    function resolveCommitmentMerklePath(
-        bytes32 _root,
-        uint256 _leaves_count
-    ) public nonReentrant whenNotPaused {
+    function resolveCommitmentMerklePath(bytes32 _root, uint256 _leaves_count) public nonReentrant whenNotPaused {
         claims.root = _root;
         _resolveCommitment(_leaves_count);
     }
@@ -160,19 +144,12 @@ contract CommitProtocol is
     /// @notice Resolves commitment using disperse contract for reward distribution
     /// @param _winner_count The number of successful participants
     /// @dev Only creator can resolve, must be after fulfillment deadline
-    function resolveCommitmentDisperse(
-        uint256 _winner_count
-    ) external nonReentrant whenNotPaused {
+    function resolveCommitmentDisperse(uint256 _winner_count) external nonReentrant whenNotPaused {
         _resolveCommitment(_winner_count);
         if (commitmentInfo.tokenAddress != address(0)) {
-            IERC20(commitmentInfo.tokenAddress).approve(
-                disperseContract,
-                type(uint256).max
-            );
+            IERC20(commitmentInfo.tokenAddress).approve(disperseContract, type(uint256).max);
         } else {
-            (bool success, ) = disperseContract.call{
-                value: commitmentInfo.stakeAmount * latestTokenId
-            }("");
+            (bool success,) = disperseContract.call{value: commitmentInfo.stakeAmount * latestTokenId}("");
             if (!success) {
                 revert DisperseCallFailed();
             }
@@ -202,9 +179,7 @@ contract CommitProtocol is
     /// @notice Claims participant stake after emergency cancellation
     /// @dev No protocol fees are assessed however join fees are non-refundable
     /// @param _token_id The NFT ID to claim stake from
-    function claimCancelled(
-        uint256 _token_id
-    ) external nonReentrant whenNotPaused {
+    function claimCancelled(uint256 _token_id) external nonReentrant whenNotPaused {
         if (commitmentInfo.status != CommitmentStatus.Cancelled) {
             revert CommitmentNotCancelled();
         }
@@ -230,7 +205,7 @@ contract CommitProtocol is
         participatingNFTs[_token_id] = true;
 
         if (commitmentInfo.tokenAddress == address(0)) {
-            (bool success, ) = msg.sender.call{value: _amount}("");
+            (bool success,) = msg.sender.call{value: _amount}("");
             require(success, "Native token transfer failed");
         } else {
             IERC20(commitmentInfo.tokenAddress).transfer(msg.sender, _amount);
@@ -247,10 +222,7 @@ contract CommitProtocol is
     /// @dev Losers cannot claim anything as their stakes are distributed to winners
     /// @param _token_id The NFT ID to claim rewards from
     /// @param _proof The merkle proof to verify winner status
-    function claimRewards(
-        uint256 _token_id,
-        bytes32[] calldata _proof
-    ) external nonReentrant whenNotPaused {
+    function claimRewards(uint256 _token_id, bytes32[] calldata _proof) external nonReentrant whenNotPaused {
         if (commitmentInfo.status != CommitmentStatus.Resolved) {
             revert CommitmentNotResolved();
         }
@@ -258,9 +230,7 @@ contract CommitProtocol is
         if (participatingNFTs[_token_id]) {
             revert AlreadyClaimed();
         }
-        bytes32 _leaf = keccak256(
-            bytes.concat(keccak256(abi.encode(msg.sender)))
-        );
+        bytes32 _leaf = keccak256(bytes.concat(keccak256(abi.encode(msg.sender))));
         bool _is_valid_winner = MerkleProof.verify(_proof, claims.root, _leaf);
 
         if (!_is_valid_winner) {
@@ -276,18 +246,13 @@ contract CommitProtocol is
         participatingNFTs[_token_id] = true;
 
         if (commitmentInfo.tokenAddress == address(0)) {
-            (bool success, ) = msg.sender.call{value: _amount}("");
+            (bool success,) = msg.sender.call{value: _amount}("");
             require(success, "Native token transfer failed");
         } else {
             IERC20(commitmentInfo.tokenAddress).transfer(msg.sender, _amount);
         }
 
-        emit RewardsClaimed(
-            _token_id,
-            msg.sender,
-            commitmentInfo.tokenAddress,
-            _amount
-        );
+        emit RewardsClaimed(_token_id, msg.sender, commitmentInfo.tokenAddress, _amount);
     }
 
     /// @notice Claims creator's rewards
@@ -307,18 +272,13 @@ contract CommitProtocol is
         claims.creatorClaimed += _amount;
 
         if (commitmentInfo.tokenAddress == address(0)) {
-            (bool success, ) = msg.sender.call{value: _amount}("");
+            (bool success,) = msg.sender.call{value: _amount}("");
             require(success, "Native token transfer failed");
         } else {
             IERC20(commitmentInfo.tokenAddress).transfer(msg.sender, _amount);
         }
 
-        emit CreatorClaimed(
-            _id,
-            msg.sender,
-            commitmentInfo.tokenAddress,
-            _amount
-        );
+        emit CreatorClaimed(_id, msg.sender, commitmentInfo.tokenAddress, _amount);
     }
 
     /// @notice Internal function to resolve a commitment and calculate winner rewards
@@ -335,28 +295,21 @@ contract CommitProtocol is
 
         // TODO: fix, insecure
         if (block.timestamp <= commitmentInfo.fulfillmentDeadline) {
-            revert FulfillmentPeriodNotEnded(
-                block.timestamp,
-                commitmentInfo.fulfillmentDeadline
-            );
+            revert FulfillmentPeriodNotEnded(block.timestamp, commitmentInfo.fulfillmentDeadline);
         }
 
         // Calculate failed participants
         uint256 _failed_count = latestTokenId - _winner_count;
 
-        uint256 _protocol_stake_fee = (commitmentInfo.stakeAmount *
-            PROTOCOL_SHARE) / BASIS_POINTS;
+        uint256 _protocol_stake_fee = (commitmentInfo.stakeAmount * PROTOCOL_SHARE) / BASIS_POINTS;
 
         // Protocol earns % of all commit stakes, won or lost
-        protocolFees[commitmentInfo.tokenAddress] +=
-            _protocol_stake_fee *
-            latestTokenId;
+        protocolFees[commitmentInfo.tokenAddress] += _protocol_stake_fee * latestTokenId;
 
         // Distribute stakes among winners, less protocol fees
-        uint256 _winner_stake_refund = commitmentInfo.stakeAmount -
-            _protocol_stake_fee;
-        uint256 _winner_stake_earnings = ((commitmentInfo.stakeAmount -
-            _protocol_stake_fee) * _failed_count) / _winner_count;
+        uint256 _winner_stake_refund = commitmentInfo.stakeAmount - _protocol_stake_fee;
+        uint256 _winner_stake_earnings =
+            ((commitmentInfo.stakeAmount - _protocol_stake_fee) * _failed_count) / _winner_count;
 
         claims.winnerClaim = _winner_stake_refund + _winner_stake_earnings;
 
@@ -372,9 +325,7 @@ contract CommitProtocol is
 
     /// @notice Updates the protocol fee address
     /// @param _new_address The new address for protocol fees
-    function setProtocolFeeAddress(
-        address payable _new_address
-    ) external onlyOwner {
+    function setProtocolFeeAddress(address payable _new_address) external onlyOwner {
         require(_new_address != address(0), "Invalid protocol fee address");
 
         address _old_address = protocolFeeAddress;
@@ -398,7 +349,7 @@ contract CommitProtocol is
 
         if (_token == address(0)) {
             // Transfer creation fee in ETH
-            (bool sent, ) = protocolFeeAddress.call{value: _amount}("");
+            (bool sent,) = protocolFeeAddress.call{value: _amount}("");
             require(sent, "ETH transfer failed");
         } else {
             // Transfer accumulated fees
@@ -422,15 +373,9 @@ contract CommitProtocol is
     /// @notice Emergency withdrawal of stuck tokens
     /// @param _token The address of the token to withdraw
     /// @param _amount The amount of tokens to withdraw
-    function emergencyWithdrawToken(
-        IERC20 _token,
-        uint256 _amount
-    ) external onlyOwner {
+    function emergencyWithdrawToken(IERC20 _token, uint256 _amount) external onlyOwner {
         uint256 _balance = _token.balanceOf(address(this));
-        require(
-            _amount > 0 && _amount <= _balance,
-            "Invalid withdrawal amount"
-        );
+        require(_amount > 0 && _amount <= _balance, "Invalid withdrawal amount");
         _token.transfer(owner(), _amount);
 
         emit EmergencyWithdrawal(address(_token), _amount);
@@ -457,9 +402,7 @@ contract CommitProtocol is
     /// @notice Checks if a participant has claimed their rewards/refund
     /// @param _token_id The NFT ID to check claim status for
     /// @return True if participant has claimed, false otherwise
-    function isParticipantClaimed(
-        uint256 _token_id
-    ) public view returns (bool) {
+    function isParticipantClaimed(uint256 _token_id) public view returns (bool) {
         return participatingNFTs[_token_id];
     }
 
@@ -476,13 +419,8 @@ contract CommitProtocol is
     /// @notice Authorizes an upgrade to a new implementation
     /// @param _new_implementation The address of the new implementation
     /// @dev Only owner can upgrade the contract
-    function _authorizeUpgrade(
-        address _new_implementation
-    ) internal view override onlyOwner {
-        require(
-            _new_implementation != address(0),
-            "Invalid implementation address"
-        );
+    function _authorizeUpgrade(address _new_implementation) internal view override onlyOwner {
+        require(_new_implementation != address(0), "Invalid implementation address");
     }
 
     /// @notice Returns the base URI for token metadata

@@ -11,14 +11,10 @@ contract DeployCommitProtocol is Script {
     function run() public {
         // Get protocol fee address from environment
         address protocolFeeAddress = vm.envAddress("PROTOCOL_FEE_ADDRESS");
-        address disperseContractAddress = vm.envAddress(
-            "DISPERSE_CONTRACT_ADDRESS"
-        );
+        address disperseContractAddress = vm.envAddress("DISPERSE_CONTRACT_ADDRESS");
         vm.startBroadcast();
         CommitProtocol implementation = new CommitProtocol();
-        CommitProtocolFactory factory = new CommitProtocolFactory(
-            address(implementation)
-        );
+        CommitProtocolFactory factory = new CommitProtocolFactory(address(implementation));
 
         vm.stopBroadcast();
 
