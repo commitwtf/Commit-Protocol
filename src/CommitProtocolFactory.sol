@@ -8,7 +8,8 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {CommitProtocol} from "./CommitProtocol.sol";
-import {console} from "forge-std/console.sol";
+import {CommitmentInfo} from "./storage.sol";
+
 import "./errors.sol";
 import "./logger.sol";
 
@@ -66,7 +67,7 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
         uint256 _fulfillmentDeadline,
         string calldata _metadataURI
     ) external payable nonReentrant whenNotPaused {
-        if (msg.value != protocolFee) {
+        if (msg.value < PROTOCOL_CREATE_FEE) {
             revert InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE);
         }
 
@@ -82,25 +83,28 @@ contract CommitProtocolFactory is ReentrancyGuard, Ownable, Pausable {
 
         protocolFee += PROTOCOL_CREATE_FEE;
 
+        CommitmentInfo memory commitmentInfo = CommitmentInfo({
+            id: ++commitmentId,
+            creator: msg.sender,
+            tokenAddress: _tokenAddress,
+            stakeAmount: _stakeAmount,
+            creatorFee: _creatorFee,
+            description: _description,
+            joinDeadline: _joinDeadline,
+            fulfillmentDeadline: _fulfillmentDeadline,
+            metadataURI: _metadataURI,
+            status: CommitmentStatus.Active
+        });
+
         bytes memory initData = abi.encodeWithSignature(
-            "initialize(uint256,address,address,address,address,uint256,uint256,bytes,uint256,uint256,string)",
-            ++commitmentId,
+            "initialize((uint256,address,address,uint256,uint256,bytes,uint256,uint256,string,uint8),address,address)",
+            commitmentInfo,
             _disperseContract,
-            msg.sender,
-            _tokenAddress,
-            _stakeAmount,
-            _creatorFee,
-            _description,
-            _joinDeadline,
-            _fulfillmentDeadline,
-            _metadataURI
+            protocolFeeAddress
         );
 
         address proxy = address(new ERC1967Proxy(implementation, initData));
         commitments.push(proxy);
-        CommitProtocol(payable(proxy)).setProtocolFeeAddress(
-            protocolFeeAddress
-        );
 
         // Transfer stake amount for creator
         IERC20(_tokenAddress).transferFrom(

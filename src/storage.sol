@@ -9,28 +9,27 @@ enum CommitmentStatus {
     Cancelled,
     EmergencyCancelled
 }
+struct CommitmentInfo {
+    uint256 id; // Unique identifier
+    address creator; // Address that created the commitment
+    address tokenAddress; // Token used for staking
+    uint256 stakeAmount; // Amount each participant must stake
+    uint256 creatorFee; // Optional fee in ERC20 token
+    bytes description; // Description of the commitment
+    uint256 joinDeadline; // Deadline to join
+    uint256 fulfillmentDeadline; // Deadline to fulfill commitment
+    string metadataURI;
+    CommitmentStatus status; // Current status of the commitment
+}
+
+struct Claims {
+    uint256 winnerClaim; // Amount each winner can claim
+    uint256 creatorClaim; // Total amount creator can claim
+    uint256 creatorClaimed; // Amount creator has already claimed
+    bytes32 root; // Merkle root of the winners
+}
 
 contract Storage {
-    struct CommitmentInfo {
-        uint256 id; // Unique identifier
-        address creator; // Address that created the commitment
-        address tokenAddress; // Token used for staking
-        uint256 stakeAmount; // Amount each participant must stake
-        uint256 creatorFee; // Optional fee in ERC20 token
-        bytes description; // Description of the commitment
-        uint256 joinDeadline; // Deadline to join
-        uint256 fulfillmentDeadline; // Deadline to fulfill commitment
-        string metadataURI;
-        CommitmentStatus status; // Current status of the commitment
-    }
-
-    struct Claims {
-        uint256 winnerClaim; // Amount each winner can claim
-        uint256 creatorClaim; // Total amount creator can claim
-        uint256 creatorClaimed; // Amount creator has already claimed
-        bytes32 root; // Merkle root of the winners
-    }
-
     /*//////////////////////////////////////////////////////////////
                                 CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -51,7 +50,7 @@ contract Storage {
     mapping(address => uint256) public protocolFees;
 
     address public disperseContract;
-    mapping(address => bool) participantClaimed; // Tracking if a participant has claimed
+    mapping(uint256 => bool) participatingNFTs; // Tracking if a participant has claimed
     uint256 internal latestTokenId;
     CommitmentInfo public commitmentInfo;
     Claims public claims;

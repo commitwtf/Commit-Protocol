@@ -4,6 +4,7 @@ pragma solidity ^0.8.13;
 import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
 import {CommitProtocol} from "../src/CommitProtocol.sol";
+import {CommitmentInfo} from "../src/storage.sol";
 import {TestToken} from "./TestToken.sol";
 
 contract CommitTest is Test {
@@ -55,7 +56,7 @@ contract CommitTest is Test {
         vm.startPrank(_sender);
         token.deal(100);
         token.approve(address(protocol), type(uint256).max);
-        CommitProtocol.CommitmentInfo memory _commitmentInfo;
+        CommitmentInfo memory _commitmentInfo;
         _commitmentInfo.id = _id;
         _commitmentInfo.creator = _sender;
         _commitmentInfo.tokenAddress = address(token);
@@ -64,7 +65,11 @@ contract CommitTest is Test {
         _commitmentInfo.description = _description;
         _commitmentInfo.joinDeadline = _joinDeadline;
         _commitmentInfo.fulfillmentDeadline = _fulfillmentDeadline;
-        protocol.initialize(_commitmentInfo, disperseContract);
+        protocol.initialize(
+            _commitmentInfo,
+            disperseContract,
+            protocolFeeAddress
+        );
         // since the factory transfer the state on creation now.
         token.transfer(address(protocol), _stakeAmount);
         vm.stopPrank();
@@ -78,15 +83,15 @@ contract CommitTest is Test {
         vm.startPrank(_user);
         token.deal(_stakeAmount + _joinFee);
         token.approve(address(protocol), type(uint256).max);
-        protocol.joinCommitment{value: protocol.PROTOCOL_JOIN_FEE()}();
+        protocol.join{value: protocol.PROTOCOL_JOIN_FEE()}();
         vm.stopPrank();
     }
 
-    function resolve(uint256 _commitmentId) public {
+    function resolve() public {
         (, address creator, , , , , , , , ) = protocol.commitmentInfo();
 
         vm.startPrank(creator);
-        protocol.resolveCommitmentMerklePath(_commitmentId, root, leavesCount);
+        protocol.resolveCommitmentMerklePath(root, leavesCount);
         vm.stopPrank();
     }
 
@@ -128,7 +133,7 @@ contract CommitTest is Test {
         vm.warp(13);
         address[] memory winners = new address[](1);
         winners[0] = userB;
-        resolve(commitmentId);
+        resolve();
 
         vm.startPrank(userB);
         uint256 balanceBBefore = token.balanceOf(userB);
@@ -159,7 +164,7 @@ contract CommitTest is Test {
         address[] memory winners = new address[](2);
         winners[0] = userB;
         winners[1] = userC;
-        resolve(commitmentId);
+        resolve();
 
         vm.startPrank(userB);
         uint256 balanceBBefore = token.balanceOf(userB);
@@ -205,7 +210,7 @@ contract CommitTest is Test {
 
         vm.deal(sender, _stakeAmount + _creatorFee);
         vm.startPrank(sender);
-        CommitProtocol.CommitmentInfo memory _commitmentInfo;
+        CommitmentInfo memory _commitmentInfo;
         _commitmentInfo.id = _id;
         _commitmentInfo.creator = _sender;
         _commitmentInfo.tokenAddress = address(0);
@@ -216,7 +221,8 @@ contract CommitTest is Test {
         _commitmentInfo.fulfillmentDeadline = _fulfillmentDeadline;
         protocol.initialize{value: _stakeAmount}(
             _commitmentInfo,
-            disperseContract
+            disperseContract,
+            protocolFeeAddress
         );
         vm.stopPrank();
     }
@@ -224,9 +230,7 @@ contract CommitTest is Test {
     function join_native(address _user, uint256 _stakeAmount) public {
         vm.startPrank(_user);
         vm.deal(_user, protocol.PROTOCOL_JOIN_FEE() + _stakeAmount);
-        protocol.joinCommitment{
-            value: protocol.PROTOCOL_JOIN_FEE() + _stakeAmount
-        }();
+        protocol.join{value: protocol.PROTOCOL_JOIN_FEE() + _stakeAmount}();
         vm.stopPrank();
     }
 
@@ -267,7 +271,7 @@ contract CommitTest is Test {
         vm.warp(13);
         address[] memory winners = new address[](1);
         winners[0] = userB;
-        resolve(commitmentId);
+        resolve();
 
         vm.startPrank(userB);
         (uint256 winnerClaim, , , ) = protocol.claims();
@@ -293,7 +297,7 @@ contract CommitTest is Test {
         address[] memory winners = new address[](2);
         winners[0] = userB;
         winners[1] = userC;
-        resolve(commitmentId);
+        resolve();
 
         vm.startPrank(userB);
         uint256 balanceBBefore = userB.balance;
