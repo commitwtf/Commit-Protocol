@@ -13,11 +13,11 @@ event CommitmentCreated(
     bytes description
 );
 
-event CommitmentJoined(uint256 indexed id, address indexed participant);
+event CommitmentJoined(address indexed participant);
 
-event CommitmentResolved(uint256 indexed id, uint256 winners);
+event CommitmentResolved(uint256 winners);
 
-event CommitmentCancelled(uint256 indexed id, address indexed cancelledBy);
+event CommitmentCancelled(address indexed cancelledBy);
 
 event CommitmentEmergencyCancelled(uint256 indexed id);
 
