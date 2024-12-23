@@ -13,11 +13,11 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 import {Storage} from "./storage.sol";
 import "./errors.sol";
 import "./logger.sol";
+
 /// @title CommitProtocol — an onchain accountability protocol
 /// @notice Enables users to create and participate in commitment-based challenges
 /// @dev Implements stake management, fee distribution, and emergency controls
 /// @author Rachit Anand Srivastava (@privacy_prophet)
-
 contract CommitProtocol is
     UUPSUpgradeable,
     ReentrancyGuardUpgradeable,
@@ -108,10 +108,11 @@ contract CommitProtocol is
             _stakeAmount
         );
 
-        uint256 commitmentId = commitmentIDCount++;
+        uint256 commitmentId = ++commitmentIDCount;
+        uint256 _commitmentId = commitmentId << 128;
 
         CommitmentInfo memory info;
-        info.id = commitmentId << 128;
+        info.id = _commitmentId;
         info.creator = msg.sender;
         info.tokenAddress = _tokenAddress;
         info.stakeAmount = _stakeAmount;
@@ -122,12 +123,12 @@ contract CommitProtocol is
         info.metadataURI = _metadataURI;
         info.status = CommitmentStatus.Active;
 
-        commitments[commitmentId].info = info;
-        ++commitmentTokenCount[commitmentId];
-        _safeMint(msg.sender, commitmentId << 128);
+        commitments[_commitmentId].info = info;
+        ++commitmentTokenCount[_commitmentId];
+        _safeMint(msg.sender, _commitmentId);
 
         emit CommitmentCreated(
-            commitmentId,
+            _commitmentId,
             msg.sender,
             _tokenAddress,
             _stakeAmount,
@@ -135,9 +136,9 @@ contract CommitProtocol is
             _description
         );
 
-        emit CommitmentJoined(commitmentId, msg.sender);
+        emit CommitmentJoined(_commitmentId, msg.sender);
 
-        return commitmentId;
+        return _commitmentId;
     }
 
     /// @notice Creates a commitment using native tokens (ETH) for staking
@@ -221,7 +222,7 @@ contract CommitProtocol is
     function joinCommitment(
         uint256 _id
     ) external payable nonReentrant whenNotPaused {
-        if (_id >= commitmentIDCount) {
+        if (_id <= commitmentIDCount) {
             revert CommitmentNotExists(_id);
         }
         if (msg.value < PROTOCOL_JOIN_FEE) {
@@ -395,20 +396,19 @@ contract CommitProtocol is
     /// @notice Claims participant's rewards and stakes after commitment resolution
     /// @dev Winners can claim their original stake plus their share of rewards from failed stakes
     /// @dev Losers cannot claim anything as their stakes are distributed to winners
-    /// @param tokenId The commitment ID to claim rewards from
+    /// @param _id The bitshifted commitment ID to claim rewards from
     /// @param _proof The merkle proof to verify winner status
     function claimRewards(
-        uint256 tokenId,
+        uint256 _id,
         bytes32[] calldata _proof
     ) external nonReentrant whenNotPaused {
-        uint256 _id = tokenId >> 128;
         Commitment storage commitment = commitments[_id];
 
         if (commitment.info.status != CommitmentStatus.Resolved) {
             revert CommitmentNotResolved();
         }
 
-        if (commitment.participants.nftsClaimed[tokenId]) {
+        if (commitment.participants.nftsClaimed[_id]) {
             revert AlreadyClaimed();
         }
         bytes32 leaf = keccak256(
@@ -430,7 +430,7 @@ contract CommitProtocol is
         }
 
         // Mark as claimed before transfer to prevent reentrancy
-        commitment.participants.nftsClaimed[tokenId] = true;
+        commitment.participants.nftsClaimed[_id] = true;
 
         if (commitment.info.tokenAddress == address(0)) {
             (bool success, ) = msg.sender.call{value: amount}("");
@@ -521,10 +521,12 @@ contract CommitProtocol is
         uint256 winnerStakeEarnings = ((commitment.info.stakeAmount -
             protocolStakeFee) * failedCount) / winnerCount;
 
-        commitment.claims.winnerClaim = winnerStakeRefund + winnerStakeEarnings;
+        commitments[_id].claims.winnerClaim =
+            winnerStakeRefund +
+            winnerStakeEarnings;
 
         // Mark commitment as resolved
-        commitment.info.status = CommitmentStatus.Resolved;
+        commitments[_id].info.status = CommitmentStatus.Resolved;
 
         emit CommitmentResolved(_id, winnerCount);
     }

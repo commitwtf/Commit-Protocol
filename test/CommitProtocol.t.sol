@@ -5,6 +5,8 @@ import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
 import {CommitProtocol} from "../src/CommitProtocol.sol";
 import {TestToken} from "./TestToken.sol";
+import "../src/logger.sol";
+import "../src/storage.sol";
 
 contract CommitTest is Test {
     CommitProtocol private protocol;
@@ -42,18 +44,37 @@ contract CommitTest is Test {
         vm.startPrank(user);
         token.deal(100);
         token.approve(address(protocol), type(uint256).max);
+
+        uint256 _commitmentId = 1 << 128;
+        bytes memory _description = bytes("Test");
+
+        vm.expectEmit();
+        emit CommitmentCreated(
+            _commitmentId,
+            user,
+            address(token),
+            stakeAmount,
+            creatorShare,
+            _description
+        );
+        emit CommitmentJoined(_commitmentId, user);
+
         uint256 id = protocol.createCommitment{
             value: protocol.PROTOCOL_CREATE_FEE()
         }(
             address(token), // _tokenAddress,
             stakeAmount, // _stakeAmount,
             creatorShare, // _creatorShare,
-            "Test", // _description,
+            _description, // _description,
             block.timestamp + 1, // _joinDeadline,
             block.timestamp + 11, // _fulfillmentDeadline,
             "http://test.com"
         );
+
+        assertEq(_commitmentId, id);
+
         vm.stopPrank();
+
         return id;
     }
 
@@ -66,6 +87,10 @@ contract CommitTest is Test {
         vm.startPrank(user);
         token.deal(stakeAmount + joinFee);
         token.approve(address(protocol), type(uint256).max);
+
+        vm.expectEmit();
+        emit CommitmentJoined(commitmentId, user);
+
         protocol.joinCommitment{value: protocol.PROTOCOL_JOIN_FEE()}(
             commitmentId
         );
@@ -75,7 +100,16 @@ contract CommitTest is Test {
     function resolve(uint256 commitmentId, address[] memory winners) public {
         address creator = protocol.getCommitmentDetails(commitmentId).creator;
         vm.startPrank(creator);
+
+        vm.expectEmit();
+        emit CommitmentResolved(commitmentId, leavesCount);
+
         protocol.resolveCommitmentMerklePath(commitmentId, root, leavesCount);
+
+        assertEq(
+            uint256(protocol.getCommitmentDetails(commitmentId).status),
+            uint256(CommitmentStatus.Resolved)
+        );
         vm.stopPrank();
     }
 
@@ -83,12 +117,12 @@ contract CommitTest is Test {
         create(userA, 100, 10);
     }
 
-    function test_Join() public {
+    function test_Join_default() public {
         uint256 commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
     }
 
-    function test_RewardSingleClaim() public {
+    function test_RewardSingleClaim_default() public {
         uint256 commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
 
@@ -112,7 +146,7 @@ contract CommitTest is Test {
         vm.stopPrank();
     }
 
-    function test_RewardMultiClaim() public {
+    function test_RewardMultiClaim_default() public {
         uint256 commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
         join(commitmentId, userC, 100, 5);
@@ -138,7 +172,7 @@ contract CommitTest is Test {
         vm.stopPrank();
     }
 
-    function test_CreatorClaim() public {
+    function test_CreatorClaim_default() public {
         uint256 commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
         vm.startPrank(userA);
@@ -149,7 +183,7 @@ contract CommitTest is Test {
         vm.stopPrank();
     }
 
-    function test_ProtocolFees() public {
+    function test_ProtocolFees_default() public {
         uint256 commitmentId = create(userA, 100, 10);
         join(commitmentId, userB, 100, 10);
 
