@@ -133,12 +133,24 @@ contract CommitTest is Test {
 
         vm.startPrank(userB);
         uint256 balanceBBefore = token.balanceOf(userB);
+        uint256 winnerClaim = protocol.getClaims(commitmentId).winnerClaim;
         require(
-            protocol.getClaims(commitmentId).winnerClaim == 99 + 99,
+            winnerClaim == 99 + 99,
             "Invalid Reward"
         ); // 99 = stake refund, 99 = earnings
+
+        vm.expectEmit();
+        emit RewardsClaimed(
+            commitmentId,
+            userB,
+            address(token),
+            winnerClaim
+        );
+
         protocol.claimRewards(commitmentId, proof);
         uint256 balanceBAfter = token.balanceOf(userB);
+
+        assertEq(balanceBBefore + winnerClaim, balanceBAfter);
         require(
             balanceBAfter - balanceBBefore == (99 + 99),
             "Fee not credited"
