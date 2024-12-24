@@ -17,6 +17,8 @@ contract CommitTest is Test {
     bytes32[] public proof = new bytes32[](0);
     uint256 leavesCount = 1;
 
+    uint256 tokenId0 = 1 << 128;
+    uint256 tokenId1 = tokenId0 + 2;
     address userA = 0x0000000000000000000000000000000000000001;
     address userB = 0x0000000000000000000000000000000000000002;
     address userC = 0x0000000000000000000000000000000000000003;
@@ -129,25 +131,18 @@ contract CommitTest is Test {
         vm.warp(13);
         address[] memory winners = new address[](1);
         winners[0] = userB;
+
         resolve(commitmentId, winners);
 
         vm.startPrank(userB);
         uint256 balanceBBefore = token.balanceOf(userB);
         uint256 winnerClaim = protocol.getClaims(commitmentId).winnerClaim;
-        require(
-            winnerClaim == 99 + 99,
-            "Invalid Reward"
-        ); // 99 = stake refund, 99 = earnings
+        require(winnerClaim == 99 + 99, "Invalid Reward"); // 99 = stake refund, 99 = earnings
 
         vm.expectEmit();
-        emit RewardsClaimed(
-            commitmentId,
-            userB,
-            address(token),
-            winnerClaim
-        );
+        emit RewardsClaimed(tokenId1, userB, address(token), winnerClaim);
 
-        protocol.claimRewards(commitmentId, proof);
+        protocol.claimRewards(tokenId1, proof);
         uint256 balanceBAfter = token.balanceOf(userB);
 
         assertEq(balanceBBefore + winnerClaim, balanceBAfter);
@@ -167,6 +162,7 @@ contract CommitTest is Test {
         address[] memory winners = new address[](2);
         winners[0] = userB;
         winners[1] = userC;
+
         resolve(commitmentId, winners);
 
         vm.startPrank(userB);
@@ -175,7 +171,7 @@ contract CommitTest is Test {
             protocol.getClaims(commitmentId).winnerClaim == 99 + 198,
             "Invalid Reward"
         );
-        protocol.claimRewards(commitmentId, proof);
+        protocol.claimRewards(tokenId1, proof);
         uint256 balanceBAfter = token.balanceOf(userB);
         require(
             balanceBAfter - balanceBBefore == (99 + 198),
@@ -272,13 +268,14 @@ contract CommitTest is Test {
             protocol.getClaims(commitmentId).winnerClaim == 99 + 99,
             "Invalid Reward"
         ); // 99 = stake refund, 99 = earnings
-        protocol.claimRewards(commitmentId, proof);
+        protocol.claimRewards(tokenId1, proof);
 
         vm.stopPrank();
     }
 
     function test_RewardMultiClaim_native() public {
         uint256 commitmentId = create_native(userA, 100, 5);
+
         join_native(commitmentId, userB, 100);
         join_native(commitmentId, userC, 100);
 
@@ -296,7 +293,7 @@ contract CommitTest is Test {
             "Invalid Reward"
         );
 
-        protocol.claimRewards(commitmentId, proof);
+        protocol.claimRewards(tokenId1, proof);
         uint256 balanceBAfter = userB.balance;
 
         require(

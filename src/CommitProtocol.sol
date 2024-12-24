@@ -13,6 +13,7 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 import {Storage} from "./storage.sol";
 import "./errors.sol";
 import "./logger.sol";
+import "forge-std/console.sol"; // TODO: to be removed, shouldn't be deployed
 
 /// @title CommitProtocol — an onchain accountability protocol
 /// @notice Enables users to create and participate in commitment-based challenges
@@ -109,7 +110,6 @@ contract CommitProtocol is
         );
 
         uint256 commitmentId = ++commitmentIDCount;
-        uint256 _commitmentId = commitmentId << 128;
 
         CommitmentInfo memory info;
         info.id = _commitmentId;
@@ -123,9 +123,12 @@ contract CommitProtocol is
         info.metadataURI = _metadataURI;
         info.status = CommitmentStatus.Active;
 
-        commitments[_commitmentId].info = info;
-        ++commitmentTokenCount[_commitmentId];
-        _safeMint(msg.sender, _commitmentId);
+        commitments[commitmentId].info = info;
+        ++commitmentTokenCount[commitmentId];
+        _safeMint(
+            msg.sender,
+            commitmentId << (128 + ++commitmentTokenCount[commitmentId])
+        );
 
         emit CommitmentCreated(
             _commitmentId,
@@ -183,10 +186,10 @@ contract CommitProtocol is
 
         protocolFees[address(0)] += PROTOCOL_CREATE_FEE;
 
-        uint256 commitmentId = commitmentIDCount++;
+        uint256 commitmentId = ++commitmentIDCount;
 
         CommitmentInfo memory info;
-        info.id = commitmentId << 128;
+        info.id = commitmentId;
         info.creator = msg.sender;
         info.tokenAddress = address(0);
         info.stakeAmount = stakeAmount;
@@ -198,9 +201,11 @@ contract CommitProtocol is
         info.status = CommitmentStatus.Active;
 
         commitments[commitmentId].info = info;
-        ++commitmentTokenCount[commitmentId];
 
-        _safeMint(msg.sender, commitmentId << 128);
+        _safeMint(
+            msg.sender,
+            commitmentId << (128 + ++commitmentTokenCount[commitmentId])
+        );
 
         emit CommitmentCreated(
             commitmentId,
@@ -222,7 +227,7 @@ contract CommitProtocol is
     function joinCommitment(
         uint256 _id
     ) external payable nonReentrant whenNotPaused {
-        if (_id <= commitmentIDCount) {
+        if (_id > commitmentIDCount) {
             revert CommitmentNotExists(_id);
         }
         if (msg.value < PROTOCOL_JOIN_FEE) {
@@ -275,7 +280,9 @@ contract CommitProtocol is
             );
         }
 
-        uint256 tokenId = commitment.info.id + ++commitmentTokenCount[_id];
+        uint256 tokenId = (commitment.info.id << 128) +
+            ++commitmentTokenCount[_id];
+
         _safeMint(msg.sender, tokenId);
 
         emit CommitmentJoined(_id, msg.sender);
@@ -291,6 +298,10 @@ contract CommitProtocol is
         bytes32 _root,
         uint256 _leavesCount
     ) public nonReentrant whenNotPaused {
+        require(
+            commitments[_id].info.status != CommitmentStatus.Resolved,
+            "Already resolved"
+        );
         commitments[_id].claims.root = _root;
         _resolveCommitment(_id, _leavesCount);
     }
@@ -303,6 +314,10 @@ contract CommitProtocol is
         uint256 _id,
         uint256 winnerCount
     ) external nonReentrant whenNotPaused {
+        require(
+            commitments[_id].info.status != CommitmentStatus.Resolved,
+            "Already resolved"
+        );
         _resolveCommitment(_id, winnerCount);
         if (commitments[_id].info.tokenAddress != address(0)) {
             IERC20(commitments[_id].info.tokenAddress).approve(
@@ -354,6 +369,7 @@ contract CommitProtocol is
         uint256 tokenId
     ) external nonReentrant whenNotPaused {
         uint256 _id = tokenId >> 128;
+
         CommitmentInfo memory commitment = commitments[_id].info;
 
         if (commitment.status != CommitmentStatus.Cancelled) {
@@ -402,13 +418,19 @@ contract CommitProtocol is
         uint256 _id,
         bytes32[] calldata _proof
     ) external nonReentrant whenNotPaused {
+        uint256 _id = tokenId >> 128;
+
         Commitment storage commitment = commitments[_id];
 
         if (commitment.info.status != CommitmentStatus.Resolved) {
             revert CommitmentNotResolved();
         }
 
-        if (commitment.participants.nftsClaimed[_id]) {
+        if (ownerOf(tokenId) != msg.sender) {
+            revert NotAParticipant();
+        }
+
+        if (commitment.participants.nftsClaimed[tokenId]) {
             revert AlreadyClaimed();
         }
         bytes32 leaf = keccak256(
