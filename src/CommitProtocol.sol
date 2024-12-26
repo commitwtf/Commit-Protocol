@@ -112,7 +112,7 @@ contract CommitProtocol is
         uint256 commitmentId = ++commitmentIDCount;
 
         CommitmentInfo memory info;
-        info.id = _commitmentId;
+        info.id = commitmentId << 128;
         info.creator = msg.sender;
         info.tokenAddress = _tokenAddress;
         info.stakeAmount = _stakeAmount;
@@ -131,7 +131,7 @@ contract CommitProtocol is
         );
 
         emit CommitmentCreated(
-            _commitmentId,
+            commitmentId,
             msg.sender,
             _tokenAddress,
             _stakeAmount,
@@ -139,9 +139,9 @@ contract CommitProtocol is
             _description
         );
 
-        emit CommitmentJoined(_commitmentId, msg.sender);
+        emit CommitmentJoined(commitmentId, msg.sender);
 
-        return _commitmentId;
+        return commitmentId;
     }
 
     /// @notice Creates a commitment using native tokens (ETH) for staking
@@ -412,13 +412,15 @@ contract CommitProtocol is
     /// @notice Claims participant's rewards and stakes after commitment resolution
     /// @dev Winners can claim their original stake plus their share of rewards from failed stakes
     /// @dev Losers cannot claim anything as their stakes are distributed to winners
-    /// @param _id The bitshifted commitment ID to claim rewards from
+    /// @param tokenId The commitment ID to claim rewards from
     /// @param _proof The merkle proof to verify winner status
     function claimRewards(
-        uint256 _id,
+        uint256 tokenId,
         bytes32[] calldata _proof
     ) external nonReentrant whenNotPaused {
         uint256 _id = tokenId >> 128;
+
+        console.log("_id %s", _id);
 
         Commitment storage commitment = commitments[_id];
 
@@ -452,7 +454,7 @@ contract CommitProtocol is
         }
 
         // Mark as claimed before transfer to prevent reentrancy
-        commitment.participants.nftsClaimed[_id] = true;
+        commitment.participants.nftsClaimed[tokenId] = true;
 
         if (commitment.info.tokenAddress == address(0)) {
             (bool success, ) = msg.sender.call{value: amount}("");
@@ -532,6 +534,14 @@ contract CommitProtocol is
         uint256 protocolStakeFee = (commitment.info.stakeAmount *
             PROTOCOL_SHARE) / BASIS_POINTS;
 
+        console.log(
+            "commitment.info.stakeAmount %s",
+            commitment.info.stakeAmount
+        );
+        console.log("PROTOCOL_SHARE %s", PROTOCOL_SHARE);
+        console.log("BASIS_POINTS %s", BASIS_POINTS);
+        console.log("protocolStakeFee %s", protocolStakeFee);
+
         // Protocol earns % of all commit stakes, won or lost
         protocolFees[commitment.info.tokenAddress] +=
             protocolStakeFee *
@@ -543,12 +553,16 @@ contract CommitProtocol is
         uint256 winnerStakeEarnings = ((commitment.info.stakeAmount -
             protocolStakeFee) * failedCount) / winnerCount;
 
-        commitments[_id].claims.winnerClaim =
-            winnerStakeRefund +
-            winnerStakeEarnings;
+        commitment.claims.winnerClaim = winnerStakeRefund + winnerStakeEarnings;
+
+        console.log("winnerStakeRefund %s", winnerStakeRefund);
+        console.log("winnerStakeEarnings %s", winnerStakeEarnings);
 
         // Mark commitment as resolved
-        commitments[_id].info.status = CommitmentStatus.Resolved;
+        commitment.info.status = CommitmentStatus.Resolved;
+
+        commitments[_id].info = commitment.info;
+        commitments[_id].claims = commitment.claims;
 
         emit CommitmentResolved(_id, winnerCount);
     }
