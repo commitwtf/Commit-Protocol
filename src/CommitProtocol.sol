@@ -112,7 +112,7 @@ contract CommitProtocol is
         uint256 commitmentId = ++commitmentIDCount;
 
         CommitmentInfo memory info;
-        info.id = commitmentId << 128;
+        info.id = commitmentId;
         info.creator = msg.sender;
         info.tokenAddress = _tokenAddress;
         info.stakeAmount = _stakeAmount;
@@ -124,10 +124,9 @@ contract CommitProtocol is
         info.status = CommitmentStatus.Active;
 
         commitments[commitmentId].info = info;
-        ++commitmentTokenCount[commitmentId];
         _safeMint(
             msg.sender,
-            commitmentId << (128 + ++commitmentTokenCount[commitmentId])
+            (commitmentId << 128) + ++commitmentTokenCount[commitmentId]
         );
 
         emit CommitmentCreated(
@@ -204,7 +203,7 @@ contract CommitProtocol is
 
         _safeMint(
             msg.sender,
-            commitmentId << (128 + ++commitmentTokenCount[commitmentId])
+            (commitmentId << 128) + ++commitmentTokenCount[commitmentId]
         );
 
         emit CommitmentCreated(

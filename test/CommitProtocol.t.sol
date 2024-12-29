@@ -93,7 +93,6 @@ contract CommitTest is Test {
     function test_RewardSingleClaim() public {
         uint256 commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
-
         vm.warp(13);
         address[] memory winners = new address[](1);
         winners[0] = userB;
