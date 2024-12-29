@@ -296,4 +296,74 @@ contract CommitTest is Test {
             "Balance not updated"
         );
     }
+
+    function test_RewardSingleClaim_nativeWithFunding() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        join_native(commitmentId, userB, 100);
+        protocol.fund{value: 100}(commitmentId, 0);
+        vm.warp(13);
+        address[] memory winners = new address[](1);
+        winners[0] = userB;
+        resolve(commitmentId, winners);
+
+        vm.startPrank(userB);
+
+        require(
+            protocol.getClaims(commitmentId).winnerClaim == 99 + 99 + 100,
+            "Invalid Reward"
+        ); // 99 = stake refund, 99 = earnings, 100 = funding
+        protocol.claimRewards(tokenId1, proof);
+
+        vm.stopPrank();
+    }
+
+    function test_RewardMultiClaim_nativeWithFunding() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+
+        join_native(commitmentId, userB, 100);
+        join_native(commitmentId, userC, 100);
+        protocol.fund{value: 100}(commitmentId, 0);
+        vm.warp(13);
+        address[] memory winners = new address[](2);
+        winners[0] = userB;
+        winners[1] = userC;
+        resolve(commitmentId, winners);
+
+        vm.startPrank(userB);
+        uint256 balanceBBefore = userB.balance;
+
+        require(
+            protocol.getClaims(commitmentId).winnerClaim == 99 + 198 + 100,
+            "Invalid Reward"
+        );
+
+        protocol.claimRewards(tokenId1, proof);
+        uint256 balanceBAfter = userB.balance;
+
+        require(
+            balanceBAfter - balanceBBefore == (99 + 198 + 100),
+            "Fee not credited"
+        ); // 99 = stake refund, 49 = earnings - creatorShare, 100 = funding
+        vm.stopPrank();
+    }
+
+    function test_FundingWithdrawWhileCommitmentActive() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        join_native(commitmentId, userB, 100);
+        protocol.fund{value: 100}(commitmentId, 0);
+        vm.warp(13);
+        protocol.removeFunding(commitmentId, 100);
+    }
+
+    function test_FundingWithdrawWhileCommitmentResolved() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        join_native(commitmentId, userB, 100);
+        protocol.fund{value: 100}(commitmentId, 0);
+        vm.warp(13);
+        address[] memory winners = new address[](1);
+        winners[0] = userB;
+        resolve(commitmentId, winners);
+        vm.expectRevert("Commitment not active");
+        protocol.removeFunding(commitmentId, 100);
+    }
 }

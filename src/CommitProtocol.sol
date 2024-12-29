@@ -503,6 +503,49 @@ contract CommitProtocol is
         );
     }
 
+    function fund(uint256 _id, uint256 _amount) external payable {
+        CommitmentInfo memory commitment = commitments[_id].info;
+        require(
+            commitment.status == CommitmentStatus.Active,
+            "Commitment not active"
+        );
+
+        if (commitment.tokenAddress == address(0)) {
+            publicFunding[msg.sender][_id] += msg.value;
+            commitment.funding += msg.value;
+        } else {
+            IERC20(commitment.tokenAddress).transferFrom(
+                msg.sender,
+                address(this),
+                _amount
+            );
+            publicFunding[msg.sender][_id] += _amount;
+            commitment.funding += _amount;
+        }
+        commitments[_id].info = commitment;
+    }
+
+    function removeFunding(uint256 _id, uint256 _amount) external payable {
+        CommitmentInfo memory commitment = commitments[_id].info;
+        require(
+            commitment.status == CommitmentStatus.Active,
+            "Commitment not active"
+        );
+        require(
+            publicFunding[msg.sender][_id] >= _amount,
+            "Invalid funding amount"
+        );
+        commitment.funding -= _amount;
+        if (commitment.tokenAddress == address(0)) {
+            (bool success, ) = msg.sender.call{value: _amount}("");
+            require(success, "Native token transfer failed");
+        } else {
+            IERC20(commitment.tokenAddress).transfer(msg.sender, _amount);
+        }
+        commitments[_id].info = commitment;
+        publicFunding[msg.sender][_id] -= _amount;
+    }
+
     /// @notice Internal function to resolve a commitment and calculate winner rewards
     /// @param _id The commitment ID to resolve
     /// @param winnerCount The number of successful participants
@@ -540,7 +583,9 @@ contract CommitProtocol is
         uint256 winnerStakeRefund = commitment.info.stakeAmount -
             protocolStakeFee;
         uint256 winnerStakeEarnings = ((commitment.info.stakeAmount -
-            protocolStakeFee) * failedCount) / winnerCount;
+            protocolStakeFee) *
+            failedCount +
+            commitment.info.funding) / winnerCount;
 
         commitment.claims.winnerClaim = winnerStakeRefund + winnerStakeEarnings;
 

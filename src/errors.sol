@@ -21,6 +21,7 @@ error InvalidFullfillmentDeadline();
 error InvalidJoinDeadline();
 error InvalidJoinFee(uint256 sent, uint256 required);
 error InvalidJoinFeeNative();
+error InvalidFundingAmount();
 error InvalidNumberOfWinners();
 error InvalidStakeAmount();
 error InvalidStakeAmountNative();

@@ -21,6 +21,7 @@ contract Storage {
         uint256 joinDeadline; // Deadline to join
         uint256 fulfillmentDeadline; // Deadline to fulfill commitment
         string metadataURI;
+        uint256 funding;
         CommitmentStatus status; // Current status of the commitment
     }
 
@@ -66,6 +67,7 @@ contract Storage {
     mapping(uint256 => Commitment) internal commitments;
     mapping(address => uint256) public protocolFees;
     mapping(uint256 => uint256) public commitmentTokenCount;
+    mapping(address => mapping(uint256 => uint256)) publicFunding;
     EnumerableSet.AddressSet internal allowedTokens;
     address public disperseContract;
 
