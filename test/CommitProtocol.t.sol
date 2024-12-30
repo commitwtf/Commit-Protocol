@@ -408,8 +408,7 @@ contract CommitTest is Test {
 
         resolve(commitmentId);
 
-        vm.expectRevert("Commitment not active");
-
+        vm.expectRevert(abi.encodeWithSignature("CommitmentNotActive()"));
         protocol.removeFunding(commitmentId, 100);
     }
 }

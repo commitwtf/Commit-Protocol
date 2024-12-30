@@ -44,10 +44,9 @@ contract CommitProtocol is
         __UUPSUpgradeable_init();
         __Pausable_init();
         __ERC721_init("Commitment", "COMMITMENT");
-        require(
-            _protocolFeeAddress != address(0),
-            "Invalid protocol fee address"
-        );
+        if (_protocolFeeAddress == address(0)) {
+            revert InvalidProtocolFeeAddress();
+        }
         protocolFeeAddress = _protocolFeeAddress;
         disperseContract = _disperseContract;
     }
@@ -265,10 +264,9 @@ contract CommitProtocol is
         // Transfer total amount in one transaction
 
         if (commitment.info.tokenAddress == address(0)) {
-            require(
-                msg.value - PROTOCOL_JOIN_FEE == commitment.info.stakeAmount,
-                "Invalid stake amount provided"
-            );
+            if (msg.value - PROTOCOL_JOIN_FEE != commitment.info.stakeAmount) {
+                revert InvalidStakeAmount();
+            }
         } else {
             // Transfer total amount in one transaction
             IERC20(commitment.info.tokenAddress).transferFrom(
@@ -296,10 +294,9 @@ contract CommitProtocol is
         bytes32 _root,
         uint256 _leavesCount
     ) public nonReentrant whenNotPaused {
-        require(
-            commitments[_id].info.status != CommitmentStatus.Resolved,
-            "Already resolved"
-        );
+        if (commitments[_id].info.status == CommitmentStatus.Resolved) {
+            revert CommitmentAlreadyResolved();
+        }
         commitments[_id].claims.root = _root;
         _resolveCommitment(_id, _leavesCount);
     }
@@ -312,10 +309,9 @@ contract CommitProtocol is
         uint256 _id,
         uint256 _winnerCount
     ) external nonReentrant whenNotPaused {
-        require(
-            commitments[_id].info.status != CommitmentStatus.Resolved,
-            "Already resolved"
-        );
+        if (commitments[_id].info.status == CommitmentStatus.Resolved) {
+            revert CommitmentAlreadyResolved();
+        }
         _resolveCommitment(_id, _winnerCount);
         if (commitments[_id].info.tokenAddress != address(0)) {
             IERC20(commitments[_id].info.tokenAddress).approve(
@@ -391,12 +387,14 @@ contract CommitProtocol is
         }
         uint256 amount = commitment.stakeAmount;
 
-        // Mark as claimed before transfer to prerror reentrancy
+        // Mark as claimed before transfer to prevent reentrancy
         commitments[_id].participants.nftsClaimed[_tokenId] = true;
 
         if (commitment.tokenAddress == address(0)) {
             (bool success, ) = msg.sender.call{value: amount}("");
-            require(success, "Native token transfer failed");
+            if (!success) {
+                revert NativeTokenTransferFailed();
+            }
         } else {
             IERC20(commitment.tokenAddress).transfer(msg.sender, amount);
         }
@@ -454,7 +452,9 @@ contract CommitProtocol is
 
         if (commitment.info.tokenAddress == address(0)) {
             (bool success, ) = msg.sender.call{value: amount}("");
-            require(success, "Native token transfer failed");
+            if (!success) {
+                revert NativeTokenTransferFailed();
+            }
         } else {
             IERC20(commitment.info.tokenAddress).transfer(msg.sender, amount);
         }
@@ -489,7 +489,9 @@ contract CommitProtocol is
 
         if (commitment.info.tokenAddress == address(0)) {
             (bool success, ) = msg.sender.call{value: amount}("");
-            require(success, "Native token transfer failed");
+            if (!success) {
+                revert NativeTokenTransferFailed();
+            }
         } else {
             IERC20(commitment.info.tokenAddress).transfer(msg.sender, amount);
         }
@@ -502,12 +504,14 @@ contract CommitProtocol is
         );
     }
 
+    /// @notice Allows public funding of a commitment
+    /// @param _id The commitment ID to fund
+    /// @param _amount The amount of tokens to fund
     function fund(uint256 _id, uint256 _amount) external payable {
         CommitmentInfo memory commitment = commitments[_id].info;
-        require(
-            commitment.status == CommitmentStatus.Active,
-            "Commitment not active"
-        );
+        if (commitment.status != CommitmentStatus.Active) {
+            revert CommitmentNotActive();
+        }
 
         if (commitment.tokenAddress == address(0)) {
             publicFunding[msg.sender][_id] += msg.value;
@@ -524,20 +528,23 @@ contract CommitProtocol is
         commitments[_id].info = commitment;
     }
 
+    /// @notice Allows removal of public funding from a commitment
+    /// @param _id The commitment ID to remove funding from
+    /// @param _amount The amount of tokens to remove
     function removeFunding(uint256 _id, uint256 _amount) external payable {
         CommitmentInfo memory commitment = commitments[_id].info;
-        require(
-            commitment.status == CommitmentStatus.Active,
-            "Commitment not active"
-        );
-        require(
-            publicFunding[msg.sender][_id] >= _amount,
-            "Invalid funding amount"
-        );
+        if (commitment.status != CommitmentStatus.Active) {
+            revert CommitmentNotActive();
+        }
+        if (publicFunding[msg.sender][_id] < _amount) {
+            revert InvalidFundingAmount();
+        }
         commitment.funding -= _amount;
         if (commitment.tokenAddress == address(0)) {
             (bool success, ) = msg.sender.call{value: _amount}("");
-            require(success, "Native token transfer failed");
+            if (!success) {
+                revert NativeTokenTransferFailed();
+            }
         } else {
             IERC20(commitment.tokenAddress).transfer(msg.sender, _amount);
         }
@@ -617,7 +624,9 @@ contract CommitProtocol is
     /// @notice Updates the protocol fee address
     /// @param _newAddress The new address for protocol fees
     function setProtocolFeeAddress(address _newAddress) external onlyOwner {
-        require(_newAddress != address(0), "Invalid protocol fee address");
+        if (_newAddress == address(0)) {
+            revert InvalidProtocolFeeAddress();
+        }
 
         address oldAddress = protocolFeeAddress;
         protocolFeeAddress = _newAddress;
@@ -633,7 +642,9 @@ contract CommitProtocol is
     function claimProtocolFees(address _token) external onlyOwner nonReentrant {
         uint256 amount = protocolFees[_token];
 
-        require(amount > 0, "No fees to claim");
+        if (amount == 0) {
+            revert NoFeesToClaim();
+        }
 
         // Clear balance before transfer to prevent reentrancy
         protocolFees[_token] = 0;
@@ -641,7 +652,9 @@ contract CommitProtocol is
         if (_token == address(0)) {
             // Transfer creation fee in ETH
             (bool sent, ) = protocolFeeAddress.call{value: amount}("");
-            require(sent, "ETH transfer failed");
+            if (!sent) {
+                revert NativeTokenTransferFailed();
+            }
         } else {
             // Transfer accumulated fees
             IERC20(_token).transfer(msg.sender, amount);
@@ -669,7 +682,9 @@ contract CommitProtocol is
         uint256 _amount
     ) external onlyOwner {
         uint256 balance = _token.balanceOf(address(this));
-        require(_amount > 0 && _amount <= balance, "Invalid withdrawal amount");
+        if (_amount == 0 || _amount > balance) {
+            revert InvalidWithdrawalAmount();
+        }
         _token.transfer(owner(), _amount);
 
         emit EmergencyWithdrawal(address(_token), _amount);
@@ -723,7 +738,9 @@ contract CommitProtocol is
     /// @notice Validates an address is not zero
     /// @param _addr The address to validate
     function _validateAddress(address _addr) internal pure {
-        require(_addr != address(0), "Invalid address");
+        if (_addr == address(0)) {
+            revert InvalidAddress();
+        }
     }
 
     /// @notice Authorizes an upgrade to a new implementation
@@ -732,18 +749,23 @@ contract CommitProtocol is
     function _authorizeUpgrade(
         address _newImplementation
     ) internal view override onlyOwner {
-        require(
-            _newImplementation != address(0),
-            "Invalid implementation address"
-        );
+        if (_newImplementation == address(0)) {
+            revert InvalidImplementationAddress();
+        }
     }
 
+    /// @notice Returns the metadata URI for a given token ID
+    /// @param _id The token ID to get the URI for
+    /// @return The metadata URI string
     function tokenURI(
         uint256 _id
     ) public view override returns (string memory) {
         return commitments[_id >> 128].info.metadataURI;
     }
 
+    /// @notice Updates the metadata URI for a commitment
+    /// @param _id The commitment ID to update
+    /// @param _uri The new metadata URI
     function updateMetadataURI(uint256 _id, string memory _uri) public {
         if (
             msg.sender != commitments[_id].info.creator && msg.sender != owner()
@@ -759,6 +781,6 @@ contract CommitProtocol is
 
     /// @notice Prevents accidental ETH transfers to contract
     receive() external payable {
-        require(false, "Direct deposits not allowed");
+        revert DirectDepositsNotAllowed();
     }
 }
