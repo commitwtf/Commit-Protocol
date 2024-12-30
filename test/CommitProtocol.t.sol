@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
 import {CommitProtocol} from "../src/CommitProtocol.sol";
 import {TestToken} from "./TestToken.sol";
+import "../src/errors.sol";
 
 contract CommitTest is Test {
     CommitProtocol private protocol;
@@ -408,7 +409,7 @@ contract CommitTest is Test {
 
         resolve(commitmentId);
 
-        vm.expectRevert("Commitment not active");
+        vm.expectRevert(CommitmentNotActive.selector);
 
         protocol.removeFunding(commitmentId, 100);
     }
