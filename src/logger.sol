@@ -21,18 +21,6 @@ event CommitmentCancelled(uint256 indexed id, address indexed cancelledBy);
 
 event CommitmentEmergencyCancelled(uint256 indexed id);
 
-event CommitmentFunded(
-    uint256 indexed id,
-    address indexed funder,
-    uint256 indexed amount
-);
-
-event CommitmentFundingRemoved(
-    uint256 indexed id,
-    address indexed funder,
-    uint256 indexed amount
-);
-
 // Claim events
 event RewardsClaimed(
     uint256 indexed id,
