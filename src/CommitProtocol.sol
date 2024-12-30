@@ -72,7 +72,8 @@ contract CommitProtocol is
         bytes calldata _description,
         uint256 _joinDeadline,
         uint256 _fulfillmentDeadline,
-        string calldata _metadataURI
+        string calldata _metadataURI,
+        address _clientId
     ) external payable nonReentrant whenNotPaused returns (uint256) {
         if (msg.value != PROTOCOL_CREATE_FEE) {
             revert InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE);
@@ -222,13 +223,17 @@ contract CommitProtocol is
     /// @param _id The ID of the commitment to join
     /// @dev Participant must pay join fee + stake amount + creator fee (if set)
     function joinCommitment(
-        uint256 _id
+        uint256 _id,
+        address _clientId
     ) external payable nonReentrant whenNotPaused {
         if (_id > commitmentIDCount) {
             revert CommitmentNotExists(_id);
         }
         if (msg.value < PROTOCOL_JOIN_FEE) {
             revert InvalidJoinFee(msg.value, PROTOCOL_JOIN_FEE);
+        }
+        if (clients[_clientId].id > clientCount) {
+            revert ClientNotExists(_clientId);
         }
 
         Commitment storage commitment = commitments[_id];
@@ -261,11 +266,24 @@ contract CommitProtocol is
             commitment.claims.creatorClaim += creatorFee - protocolEarnings;
         }
 
+        uint256 clientShare = (commitment.info.stakeAmount *
+            clients[_clientId].clientFeeShare) / BASIS_POINTS;
         // Transfer total amount in one transaction
 
         if (commitment.info.tokenAddress == address(0)) {
-            if (msg.value - PROTOCOL_JOIN_FEE != commitment.info.stakeAmount) {
+            if (
+                msg.value - PROTOCOL_JOIN_FEE - clientShare !=
+                commitment.info.stakeAmount
+            ) {
                 revert InvalidStakeAmount();
+            }
+            if (clientShare > 0) {
+                (bool success, ) = clients[_clientId]
+                    .clientWithdrawAddress
+                    .call{value: clientShare}("");
+                if (!success) {
+                    revert NativeTokenTransferFailed();
+                }
             }
         } else {
             // Transfer total amount in one transaction
@@ -274,6 +292,13 @@ contract CommitProtocol is
                 address(this),
                 totalAmount
             );
+            if (clientShare > 0) {
+                IERC20(commitment.info.tokenAddress).transferFrom(
+                    msg.sender,
+                    clients[_clientId].clientWithdrawAddress,
+                    clientShare
+                );
+            }
         }
 
         uint256 tokenId = (commitment.info.id << 128) +
@@ -599,6 +624,27 @@ contract CommitProtocol is
         commitment.info.status = CommitmentStatus.Resolved;
 
         emit CommitmentResolved(_id, _winnerCount);
+    }
+
+    function addClient(
+        address _client,
+        address _clientWithdrawAddress,
+        uint256 _clientFee
+    ) external {
+        clients[_client] = Client(
+            ++clientCount,
+            _client,
+            _clientWithdrawAddress,
+            _clientFee
+        );
+        emit ClientAdded(clientCount, _client);
+    }
+
+    function removeClient(address _client) external {
+        if (clients[_client].clientAddress != msg.sender) {
+            revert OnlyClientCanRemove();
+        }
+        delete clients[_client];
     }
 
     /*//////////////////////////////////////////////////////////////

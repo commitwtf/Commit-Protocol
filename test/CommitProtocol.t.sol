@@ -80,7 +80,8 @@ contract CommitTest is Test {
         token.deal(_stakeAmount + _joinFee);
         token.approve(address(protocol), type(uint256).max);
         protocol.joinCommitment{value: protocol.PROTOCOL_JOIN_FEE()}(
-            _commitmentId
+            _commitmentId,
+            address(0)
         );
 
         vm.stopPrank();
@@ -106,6 +107,27 @@ contract CommitTest is Test {
     function test_Join() public {
         uint256 commitmentId = create(userA, 100, 5);
         join(commitmentId, userB, 100, 5);
+    }
+
+    function test_Join_WithClient() public {
+        uint256 commitmentId = create(userA, 100, 5);
+        vm.startPrank(userB);
+        uint256 clientFee = 10;
+        protocol.addClient(userB, userC, clientFee);
+        token.deal(200);
+        token.approve(address(protocol), type(uint256).max);
+        uint256 balanceBefore = token.balanceOf(userC);
+        protocol.joinCommitment{value: protocol.PROTOCOL_JOIN_FEE()}(
+            commitmentId,
+            userB
+        );
+        uint256 balanceAfter = token.balanceOf(userC);
+        require(
+            balanceAfter - balanceBefore ==
+                (clientFee * 200) / protocol.BASIS_POINTS(),
+            "Client fee not credited"
+        );
+        vm.stopPrank();
     }
 
     function test_RewardSingleClaim() public {
@@ -232,7 +254,7 @@ contract CommitTest is Test {
 
         protocol.joinCommitment{
             value: protocol.PROTOCOL_JOIN_FEE() + _stakeAmount
-        }(_commitmentId);
+        }(_commitmentId, address(0));
 
         vm.stopPrank();
     }
@@ -248,6 +270,23 @@ contract CommitTest is Test {
     function test_Join_native() public {
         uint256 commitmentId = create_native(userA, 100, 5);
         join_native(commitmentId, userB, 100);
+    }
+    function test_Join_WithClient_native() public {
+        uint256 commitmentId = create_native(userA, 100, 5);
+        vm.startPrank(userB);
+        uint256 clientFee = 10;
+        protocol.addClient(userB, userC, clientFee);
+        clientFee = (clientFee * 100) / protocol.BASIS_POINTS();
+        uint256 balanceBefore = address(userC).balance;
+        protocol.joinCommitment{
+            value: protocol.PROTOCOL_JOIN_FEE() + 100 + clientFee
+        }(commitmentId, userB);
+        uint256 balanceAfter = address(userC).balance;
+        require(
+            balanceAfter - balanceBefore == clientFee,
+            "Client fee not credited"
+        );
+        vm.stopPrank();
     }
 
     function test_RewardSingleClaim_native() public {

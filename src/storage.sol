@@ -44,6 +44,13 @@ contract Storage {
         CommitmentParticipants participants; // Participants and winners details
     }
 
+    struct Client {
+        uint256 id;
+        address clientAddress;
+        address clientWithdrawAddress;
+        uint256 clientFeeShare;
+    }
+
     /*//////////////////////////////////////////////////////////////
                                 CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -64,10 +71,12 @@ contract Storage {
 
     uint256 public commitmentIDCount;
     address public protocolFeeAddress;
+    uint256 internal clientCount;
     mapping(uint256 => Commitment) internal commitments;
     mapping(address => uint256) public protocolFees;
     mapping(uint256 => uint256) public commitmentTokenCount;
     mapping(address => mapping(uint256 => uint256)) publicFunding;
+    mapping(address => Client) public clients;
     EnumerableSet.AddressSet internal allowedTokens;
     address public disperseContract;
 
