@@ -82,6 +82,10 @@ contract CommitProtocol is
             revert TokenNotAllowed(_tokenAddress);
         }
 
+        if (clients[_clientId].id > clientCount) {
+            revert ClientNotExists(_clientId);
+        }
+
         if (_description.length > MAX_DESCRIPTION_LENGTH) {
             revert DescriptionTooLong();
         }
@@ -99,8 +103,6 @@ contract CommitProtocol is
             revert InvalidStakeAmount();
         }
 
-        //  if()
-
         protocolFees[address(0)] += PROTOCOL_CREATE_FEE;
 
         // Transfer stake amount for creator
@@ -109,6 +111,17 @@ contract CommitProtocol is
             address(this),
             _stakeAmount
         );
+
+        uint256 clientShare = (_stakeAmount *
+            clients[_clientId].clientFeeShare) / BASIS_POINTS;
+
+        if (clientShare > 0) {
+            IERC20(_tokenAddress).transferFrom(
+                msg.sender,
+                clients[_clientId].clientWithdrawAddress,
+                clientShare
+            );
+        }
 
         uint256 commitmentId = ++commitmentIDCount;
 
@@ -155,9 +168,11 @@ contract CommitProtocol is
     function createCommitmentNativeToken(
         uint256 _creatorFee,
         bytes calldata _description,
+        uint256 _stakeAmount,
         uint256 _joinDeadline,
         uint256 _fulfillmentDeadline,
-        string calldata _metadataURI
+        string calldata _metadataURI,
+        address _clientId
     ) external payable nonReentrant whenNotPaused returns (uint256) {
         if (msg.value < PROTOCOL_CREATE_FEE) {
             revert InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE);
@@ -178,9 +193,22 @@ contract CommitProtocol is
             revert InvalidFullfillmentDeadline();
         }
 
-        uint256 stakeAmount = msg.value - PROTOCOL_CREATE_FEE;
+        uint256 clientShare = (_stakeAmount *
+            clients[_clientId].clientFeeShare) / BASIS_POINTS;
 
-        if (stakeAmount == 0) {
+        if (clientShare > 0) {
+            (bool success, ) = clients[_clientId].clientWithdrawAddress.call{
+                value: clientShare
+            }("");
+            if (!success) {
+                revert NativeTokenTransferFailed();
+            }
+        }
+
+        if (
+            msg.value - PROTOCOL_CREATE_FEE - _creatorFee - clientShare !=
+            _stakeAmount
+        ) {
             revert InvalidStakeAmount();
         }
 
@@ -192,7 +220,7 @@ contract CommitProtocol is
         info.id = commitmentId;
         info.creator = msg.sender;
         info.tokenAddress = address(0);
-        info.stakeAmount = stakeAmount;
+        info.stakeAmount = _stakeAmount;
         info.creatorFee = _creatorFee;
         info.description = _description;
         info.joinDeadline = _joinDeadline;
@@ -211,7 +239,7 @@ contract CommitProtocol is
             commitmentId,
             msg.sender,
             address(0),
-            stakeAmount,
+            _stakeAmount,
             _creatorFee,
             _description
         );

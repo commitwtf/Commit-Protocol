@@ -110,6 +110,41 @@ contract CommitTest is Test {
         createCommitment(userA, 100, 10);
     }
 
+    function testCreateCommitmentWithClient() public {
+        vm.startPrank(userB);
+        uint256 stake = 1000000000000000000;
+        uint256 clientFee = 10;
+        commitProtocol.addClient(userB, userC, clientFee);
+
+        testToken.deal(
+            stake + (clientFee * stake) / commitProtocol.BASIS_POINTS()
+        );
+        testToken.approve(address(commitProtocol), type(uint256).max);
+        uint256 balanceBefore = testToken.balanceOf(userC);
+        uint256 id = commitProtocol.createCommitment{
+            value: commitProtocol.PROTOCOL_CREATE_FEE()
+        }(
+            address(testToken), // _tokenAddress,
+            stake, // _stakeAmount,
+            10, // _creatorShare,
+            "Test", // _description,
+            block.timestamp + 1, // _joinDeadline,
+            block.timestamp + 11, // _fulfillmentDeadline,
+            "http://test.com",
+            userB
+        );
+
+        uint256 balanceAfter = testToken.balanceOf(userC);
+
+        require(
+            balanceAfter - balanceBefore ==
+                (clientFee * stake) / commitProtocol.BASIS_POINTS(),
+            "Client fee not credited"
+        );
+
+        vm.stopPrank();
+    }
+
     function testJoinCommitment() public {
         uint256 commitmentId = createCommitment(userA, 100, 5);
         joinCommitment(commitmentId, userB, 100, 5);
@@ -237,13 +272,17 @@ contract CommitTest is Test {
         vm.startPrank(_user);
 
         uint256 id = commitProtocol.createCommitmentNativeToken{
-            value: commitProtocol.PROTOCOL_CREATE_FEE() + _stakeAmount
+            value: commitProtocol.PROTOCOL_CREATE_FEE() +
+                _stakeAmount +
+                _creatorShare
         }(
             _creatorShare, // _creatorShare,
             "Test", // _description,
+            _stakeAmount, // _stakeAmount,
             block.timestamp + 1, // _joinDeadline,
             block.timestamp + 11, // _fulfillmentDeadline
-            "test.com"
+            "test.com",
+            address(0)
         );
 
         vm.stopPrank();
@@ -271,6 +310,39 @@ contract CommitTest is Test {
 
     function testCreateCommitmentNative() public {
         createCommitmentNative(userA, 100, 10);
+    }
+
+    function testCreateCommitmentNativeWithClient() public {
+        vm.startPrank(userB);
+        uint256 stake = 1000000000000000000;
+        uint256 clientFee = 10;
+        vm.deal(userB, stake * 2);
+        uint256 creatorShare = 10;
+        commitProtocol.addClient(userB, userC, clientFee);
+        uint256 balanceBefore = address(userC).balance;
+        uint256 id = commitProtocol.createCommitmentNativeToken{
+            value: commitProtocol.PROTOCOL_CREATE_FEE() +
+                creatorShare +
+                stake +
+                ((clientFee * stake) / commitProtocol.BASIS_POINTS())
+        }(
+            creatorShare, // _creatorShare,
+            "Test", // _description,
+            stake, // _stakeAmount,
+            block.timestamp + 1, // _joinDeadline,
+            block.timestamp + 11, // _fulfillmentDeadline
+            "test.com",
+            userB
+        );
+        uint256 balanceAfter = address(userC).balance;
+
+        require(
+            balanceAfter - balanceBefore ==
+                (clientFee * stake) / commitProtocol.BASIS_POINTS(),
+            "Client fee not credited"
+        );
+
+        vm.stopPrank();
     }
 
     function testJoinCommitmentNative() public {
