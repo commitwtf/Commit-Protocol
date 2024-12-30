@@ -99,6 +99,8 @@ contract CommitProtocol is
             revert InvalidStakeAmount();
         }
 
+        //  if()
+
         protocolFees[address(0)] += PROTOCOL_CREATE_FEE;
 
         // Transfer stake amount for creator
