@@ -21,9 +21,9 @@ event CommitmentCancelled(uint256 indexed id, address indexed cancelledBy);
 
 event CommitmentEmergencyCancelled(uint256 indexed id);
 
-event ClientAdded(uint256 indexed id, address indexed client);
+event ClientAdded(address indexed client);
 
-event ClientRemoved(uint256 indexed id, address indexed client);
+event ClientRemoved(address indexed client);
 
 // Claim events
 event RewardsClaimed(

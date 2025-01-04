@@ -114,7 +114,7 @@ contract CommitTest is Test {
         vm.startPrank(userB);
         uint256 stake = 1000000000000000000;
         uint256 clientFee = 10;
-        commitProtocol.addClient(userB, userC, clientFee);
+        commitProtocol.addClient(userC, clientFee);
 
         testToken.deal(
             stake + (clientFee * stake) / commitProtocol.BASIS_POINTS()
@@ -154,7 +154,7 @@ contract CommitTest is Test {
         uint256 commitmentId = createCommitment(userA, 100, 5);
         vm.startPrank(userB);
         uint256 clientFee = 10;
-        commitProtocol.addClient(userB, userC, clientFee);
+        commitProtocol.addClient(userC, clientFee);
         testToken.deal(200);
         testToken.approve(address(commitProtocol), type(uint256).max);
         uint256 balanceBefore = testToken.balanceOf(userC);
@@ -319,7 +319,7 @@ contract CommitTest is Test {
         uint256 clientFee = 10;
         vm.deal(userB, stake * 2);
         uint256 creatorShare = 10;
-        commitProtocol.addClient(userB, userC, clientFee);
+        commitProtocol.addClient(userC, clientFee);
         uint256 balanceBefore = address(userC).balance;
         CommitProtocol.CommitmentInfo memory info;
         info.creator = userB;
@@ -355,7 +355,7 @@ contract CommitTest is Test {
         uint256 commitmentId = createCommitmentNative(userA, 100, 5);
         vm.startPrank(userB);
         uint256 clientFee = 10;
-        commitProtocol.addClient(userB, userC, clientFee);
+        commitProtocol.addClient(userC, clientFee);
         clientFee = (clientFee * 100) / commitProtocol.BASIS_POINTS();
         uint256 balanceBefore = address(userC).balance;
         commitProtocol.joinCommitment{

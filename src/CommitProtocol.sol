@@ -59,6 +59,7 @@ contract CommitProtocol is
     /// @param _info The commitment info
     /// @param _clientId The client ID
     /// @dev Creator becomes first participant by staking tokens + paying creation fee in ETH
+    /// @dev we don't check if the client doesn't exists, the flow continues, since client fee is 0.
     /// @return The ID of the newly created commitment
     function createCommitment(
         CommitmentInfo memory _info,
@@ -72,10 +73,6 @@ contract CommitProtocol is
         }
         if (!allowedTokens.contains(_info.tokenAddress)) {
             revert TokenNotAllowed(_info.tokenAddress);
-        }
-
-        if (clients[_clientId].id > clientCount) {
-            revert ClientNotExists(_clientId);
         }
 
         if (_info.description.length > MAX_DESCRIPTION_LENGTH) {
@@ -232,9 +229,6 @@ contract CommitProtocol is
         if (msg.value < PROTOCOL_JOIN_FEE) {
             revert InvalidJoinFee(msg.value, PROTOCOL_JOIN_FEE);
         }
-        if (clients[_clientId].id > clientCount) {
-            revert ClientNotExists(_clientId);
-        }
 
         Commitment storage commitment = commitments[_id];
 
@@ -359,7 +353,7 @@ contract CommitProtocol is
     /// @dev This calls resolveCommitment internally to handle refunds properly
     /// @dev Requires exactly 1 participant (the creator) since creator auto-joins on creation
     function cancelCommitment(uint256 _id) external whenNotPaused {
-        if (_id >= commitmentIDCount) {
+        if (_id > commitmentIDCount) {
             revert CommitmentDoesNotExist();
         }
 
@@ -558,7 +552,7 @@ contract CommitProtocol is
     /// @param _amount The amount of tokens to remove
     function removeFunding(uint256 _id, uint256 _amount) external payable {
         CommitmentInfo memory commitment = commitments[_id].info;
-        if (commitment.status != CommitmentStatus.Active) {
+        if (commitment.status == CommitmentStatus.Resolved) {
             revert CommitmentNotActive();
         }
         if (publicFunding[msg.sender][_id] < _amount) {
@@ -627,17 +621,15 @@ contract CommitProtocol is
     }
 
     function addClient(
-        address _client,
         address _clientWithdrawAddress,
         uint256 _clientFee
     ) external {
-        clients[_client] = Client(
-            ++clientCount,
-            _client,
+        clients[msg.sender] = Client(
+            msg.sender,
             _clientWithdrawAddress,
             _clientFee
         );
-        emit ClientAdded(clientCount, _client);
+        emit ClientAdded(msg.sender);
     }
 
     function removeClient(address _client) external {
@@ -645,6 +637,18 @@ contract CommitProtocol is
             revert OnlyClientCanRemove();
         }
         delete clients[_client];
+        emit ClientRemoved(_client);
+    }
+
+    function updateClient(
+        address _clientWithdrawAddress,
+        uint256 _clientFee
+    ) external {
+        clients[msg.sender] = Client(
+            msg.sender,
+            _clientWithdrawAddress,
+            _clientFee
+        );
     }
 
     /*//////////////////////////////////////////////////////////////

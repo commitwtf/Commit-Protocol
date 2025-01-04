@@ -45,7 +45,6 @@ contract Storage {
     }
 
     struct Client {
-        uint256 id;
         address clientAddress;
         address clientWithdrawAddress;
         uint256 clientFeeShare;
@@ -71,7 +70,7 @@ contract Storage {
 
     uint256 public commitmentIDCount;
     address public protocolFeeAddress;
-    uint256 internal clientCount;
+
     mapping(uint256 => Commitment) internal commitments;
     mapping(address => uint256) public protocolFees;
     mapping(uint256 => uint256) public commitmentTokenCount;
