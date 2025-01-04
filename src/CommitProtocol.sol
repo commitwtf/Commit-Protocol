@@ -56,67 +56,60 @@ contract CommitProtocol is
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Creates a commitment with specified parameters and stake requirements
-    /// @param _tokenAddress The address of the ERC20 token used for staking
-    /// @param _stakeAmount The amount each participant must stake
-    /// @param _creatorFee The fee required to join the commitment (optionally set by creator)
-    /// @param _description A brief description of the commitment
-    /// @param _joinDeadline The deadline for participants to join
-    /// @param _fulfillmentDeadline The deadline for fulfilling the commitment
-    /// @param _metadataURI The URI for the commitment's metadata
+    /// @param _info The commitment info
+    /// @param _clientId The client ID
     /// @dev Creator becomes first participant by staking tokens + paying creation fee in ETH
     /// @return The ID of the newly created commitment
     function createCommitment(
-        address _tokenAddress,
-        uint256 _stakeAmount,
-        uint256 _creatorFee,
-        bytes calldata _description,
-        uint256 _joinDeadline,
-        uint256 _fulfillmentDeadline,
-        string calldata _metadataURI,
+        CommitmentInfo memory _info,
         address _clientId
     ) external payable nonReentrant whenNotPaused returns (uint256) {
         if (msg.value != PROTOCOL_CREATE_FEE) {
             revert InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE);
         }
-        if (!allowedTokens.contains(_tokenAddress)) {
-            revert TokenNotAllowed(_tokenAddress);
+        if (msg.sender != _info.creator) {
+            revert InvalidCreator();
+        }
+        if (!allowedTokens.contains(_info.tokenAddress)) {
+            revert TokenNotAllowed(_info.tokenAddress);
         }
 
         if (clients[_clientId].id > clientCount) {
             revert ClientNotExists(_clientId);
         }
 
-        if (_description.length > MAX_DESCRIPTION_LENGTH) {
+        if (_info.description.length > MAX_DESCRIPTION_LENGTH) {
             revert DescriptionTooLong();
         }
-        if (_joinDeadline <= block.timestamp) {
+        if (_info.joinDeadline <= block.timestamp) {
             revert JoinDealineTooEarly();
         }
         if (
-            !(_fulfillmentDeadline > _joinDeadline &&
-                _fulfillmentDeadline <= block.timestamp + MAX_DEADLINE_DURATION)
+            !(_info.fulfillmentDeadline > _info.joinDeadline &&
+                _info.fulfillmentDeadline <=
+                block.timestamp + MAX_DEADLINE_DURATION)
         ) {
             revert InvalidFullfillmentDeadline();
         }
 
-        if (_stakeAmount == 0) {
+        if (_info.stakeAmount == 0) {
             revert InvalidStakeAmount();
         }
 
         protocolFees[address(0)] += PROTOCOL_CREATE_FEE;
 
         // Transfer stake amount for creator
-        IERC20(_tokenAddress).transferFrom(
+        IERC20(_info.tokenAddress).transferFrom(
             msg.sender,
             address(this),
-            _stakeAmount
+            _info.stakeAmount
         );
 
-        uint256 clientShare = (_stakeAmount *
+        uint256 clientShare = (_info.stakeAmount *
             clients[_clientId].clientFeeShare) / BASIS_POINTS;
 
         if (clientShare > 0) {
-            IERC20(_tokenAddress).transferFrom(
+            IERC20(_info.tokenAddress).transferFrom(
                 msg.sender,
                 clients[_clientId].clientWithdrawAddress,
                 clientShare
@@ -125,19 +118,9 @@ contract CommitProtocol is
 
         uint256 commitmentId = ++commitmentIDCount;
 
-        CommitmentInfo memory info;
-        info.id = commitmentId;
-        info.creator = msg.sender;
-        info.tokenAddress = _tokenAddress;
-        info.stakeAmount = _stakeAmount;
-        info.creatorFee = _creatorFee;
-        info.description = _description;
-        info.joinDeadline = _joinDeadline;
-        info.fulfillmentDeadline = _fulfillmentDeadline;
-        info.metadataURI = _metadataURI;
-        info.status = CommitmentStatus.Active;
+        _info.id = commitmentId;
 
-        commitments[commitmentId].info = info;
+        commitments[commitmentId].info = _info;
         _safeMint(
             msg.sender,
             (commitmentId << 128) + ++commitmentTokenCount[commitmentId]
@@ -146,10 +129,10 @@ contract CommitProtocol is
         emit CommitmentCreated(
             commitmentId,
             msg.sender,
-            _tokenAddress,
-            _stakeAmount,
-            _creatorFee,
-            _description
+            _info.tokenAddress,
+            _info.stakeAmount,
+            _info.creatorFee,
+            _info.description
         );
 
         emit CommitmentJoined(commitmentId, msg.sender);
@@ -158,42 +141,35 @@ contract CommitProtocol is
     }
 
     /// @notice Creates a commitment using native tokens (ETH) for staking
-    /// @param _creatorFee The fee required to join the commitment (optionally set by creator)
-    /// @param _description A brief description of the commitment
-    /// @param _joinDeadline The deadline for participants to join
-    /// @param _fulfillmentDeadline The deadline for fulfilling the commitment
-    /// @param _metadataURI The URI for the commitment's metadata
+    /// @param _info The commitment info
+    /// @param _clientId The client ID
     /// @dev Creator becomes first participant by staking ETH + paying creation fee in ETH
     /// @return The ID of the newly created commitment
     function createCommitmentNativeToken(
-        uint256 _creatorFee,
-        bytes calldata _description,
-        uint256 _stakeAmount,
-        uint256 _joinDeadline,
-        uint256 _fulfillmentDeadline,
-        string calldata _metadataURI,
+        CommitmentInfo memory _info,
         address _clientId
     ) external payable nonReentrant whenNotPaused returns (uint256) {
         if (msg.value < PROTOCOL_CREATE_FEE) {
             revert InvalidCreationFee(msg.value, PROTOCOL_CREATE_FEE);
         }
 
-        if (_description.length > MAX_DESCRIPTION_LENGTH) {
+        if (_info.description.length > MAX_DESCRIPTION_LENGTH) {
             revert DescriptionTooLong();
         }
 
-        if (_joinDeadline <= block.timestamp) {
+        if (_info.joinDeadline <= block.timestamp) {
             revert InvalidJoinDeadline();
         }
 
         if (
-            !(_fulfillmentDeadline > _joinDeadline &&
-                _fulfillmentDeadline <= block.timestamp + MAX_DEADLINE_DURATION)
+            !(_info.fulfillmentDeadline > _info.joinDeadline &&
+                _info.fulfillmentDeadline <=
+                block.timestamp + MAX_DEADLINE_DURATION)
         ) {
             revert InvalidFullfillmentDeadline();
         }
 
-        uint256 clientShare = (_stakeAmount *
+        uint256 clientShare = (_info.stakeAmount *
             clients[_clientId].clientFeeShare) / BASIS_POINTS;
 
         if (clientShare > 0) {
@@ -205,9 +181,13 @@ contract CommitProtocol is
             }
         }
 
+        if (_info.creator != msg.sender || _info.tokenAddress != address(0)) {
+            revert InvalidCreatorOrTokenAddress();
+        }
+
         if (
-            msg.value - PROTOCOL_CREATE_FEE - _creatorFee - clientShare !=
-            _stakeAmount
+            msg.value - PROTOCOL_CREATE_FEE - _info.creatorFee - clientShare !=
+            _info.stakeAmount
         ) {
             revert InvalidStakeAmount();
         }
@@ -216,19 +196,9 @@ contract CommitProtocol is
 
         uint256 commitmentId = ++commitmentIDCount;
 
-        CommitmentInfo memory info;
-        info.id = commitmentId;
-        info.creator = msg.sender;
-        info.tokenAddress = address(0);
-        info.stakeAmount = _stakeAmount;
-        info.creatorFee = _creatorFee;
-        info.description = _description;
-        info.joinDeadline = _joinDeadline;
-        info.fulfillmentDeadline = _fulfillmentDeadline;
-        info.metadataURI = _metadataURI;
-        info.status = CommitmentStatus.Active;
+        _info.id = commitmentId;
 
-        commitments[commitmentId].info = info;
+        commitments[commitmentId].info = _info;
 
         _safeMint(
             msg.sender,
@@ -239,9 +209,9 @@ contract CommitProtocol is
             commitmentId,
             msg.sender,
             address(0),
-            _stakeAmount,
-            _creatorFee,
-            _description
+            _info.stakeAmount,
+            _info.creatorFee,
+            _info.description
         );
 
         emit CommitmentJoined(commitmentId, msg.sender);

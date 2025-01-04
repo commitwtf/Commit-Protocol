@@ -49,4 +49,6 @@ error OnlyCreatorCanClaim();
 error OnlyCreatorCanResolve();
 error OnlyCreatorOrOwnerCanCancel();
 error OnlyCreatorOrOwnerCanUpdateURI();
+error InvalidCreatorOrTokenAddress();
 error TokenNotAllowed(address token);
+error InvalidCreator();

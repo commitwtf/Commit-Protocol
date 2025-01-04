@@ -51,19 +51,19 @@ contract CommitTest is Test {
         vm.startPrank(_user);
 
         testToken.deal(100);
+        CommitProtocol.CommitmentInfo memory info;
+        info.creator = _user;
+        info.tokenAddress = address(testToken);
+        info.stakeAmount = _stakeAmount;
+        info.creatorFee = _creatorShare;
+        info.description = "Test";
+        info.joinDeadline = block.timestamp + 1;
+        info.fulfillmentDeadline = block.timestamp + 11;
+        info.metadataURI = "http://test.com";
         testToken.approve(address(commitProtocol), type(uint256).max);
         uint256 id = commitProtocol.createCommitment{
             value: commitProtocol.PROTOCOL_CREATE_FEE()
-        }(
-            address(testToken), // _tokenAddress,
-            _stakeAmount, // _stakeAmount,
-            _creatorShare, // _creatorShare,
-            "Test", // _description,
-            block.timestamp + 1, // _joinDeadline,
-            block.timestamp + 11, // _fulfillmentDeadline,
-            "http://test.com",
-            address(0)
-        );
+        }(info, address(0));
 
         vm.stopPrank();
 
@@ -121,18 +121,18 @@ contract CommitTest is Test {
         );
         testToken.approve(address(commitProtocol), type(uint256).max);
         uint256 balanceBefore = testToken.balanceOf(userC);
+        CommitProtocol.CommitmentInfo memory info;
+        info.creator = userB;
+        info.tokenAddress = address(testToken);
+        info.stakeAmount = stake;
+        info.creatorFee = 10;
+        info.description = "Test";
+        info.joinDeadline = block.timestamp + 1;
+        info.fulfillmentDeadline = block.timestamp + 11;
+        info.metadataURI = "http://test.com";
         uint256 id = commitProtocol.createCommitment{
             value: commitProtocol.PROTOCOL_CREATE_FEE()
-        }(
-            address(testToken), // _tokenAddress,
-            stake, // _stakeAmount,
-            10, // _creatorShare,
-            "Test", // _description,
-            block.timestamp + 1, // _joinDeadline,
-            block.timestamp + 11, // _fulfillmentDeadline,
-            "http://test.com",
-            userB
-        );
+        }(info, userB);
 
         uint256 balanceAfter = testToken.balanceOf(userC);
 
@@ -270,20 +270,21 @@ contract CommitTest is Test {
         uint256 _creatorShare
     ) public returns (uint256) {
         vm.startPrank(_user);
+        CommitProtocol.CommitmentInfo memory info;
+        info.creator = _user;
+        info.tokenAddress = address(0);
+        info.stakeAmount = _stakeAmount;
+        info.creatorFee = _creatorShare;
+        info.description = "Test";
+        info.joinDeadline = block.timestamp + 1;
+        info.fulfillmentDeadline = block.timestamp + 11;
+        info.metadataURI = "http://test.com";
 
         uint256 id = commitProtocol.createCommitmentNativeToken{
             value: commitProtocol.PROTOCOL_CREATE_FEE() +
                 _stakeAmount +
                 _creatorShare
-        }(
-            _creatorShare, // _creatorShare,
-            "Test", // _description,
-            _stakeAmount, // _stakeAmount,
-            block.timestamp + 1, // _joinDeadline,
-            block.timestamp + 11, // _fulfillmentDeadline
-            "test.com",
-            address(0)
-        );
+        }(info, address(0));
 
         vm.stopPrank();
 
@@ -320,20 +321,21 @@ contract CommitTest is Test {
         uint256 creatorShare = 10;
         commitProtocol.addClient(userB, userC, clientFee);
         uint256 balanceBefore = address(userC).balance;
+        CommitProtocol.CommitmentInfo memory info;
+        info.creator = userB;
+        info.tokenAddress = address(0);
+        info.stakeAmount = stake;
+        info.creatorFee = creatorShare;
+        info.description = "Test";
+        info.joinDeadline = block.timestamp + 1;
+        info.fulfillmentDeadline = block.timestamp + 11;
+        info.metadataURI = "http://test.com";
         uint256 id = commitProtocol.createCommitmentNativeToken{
             value: commitProtocol.PROTOCOL_CREATE_FEE() +
                 creatorShare +
                 stake +
                 ((clientFee * stake) / commitProtocol.BASIS_POINTS())
-        }(
-            creatorShare, // _creatorShare,
-            "Test", // _description,
-            stake, // _stakeAmount,
-            block.timestamp + 1, // _joinDeadline,
-            block.timestamp + 11, // _fulfillmentDeadline
-            "test.com",
-            userB
-        );
+        }(info, userB);
         uint256 balanceAfter = address(userC).balance;
 
         require(
