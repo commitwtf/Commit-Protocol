@@ -52,3 +52,4 @@ error OnlyCreatorOrOwnerCanUpdateURI();
 error InvalidCreatorOrTokenAddress();
 error TokenNotAllowed(address token);
 error InvalidCreator();
+error InvalidTokenAddress();

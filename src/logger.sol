@@ -80,3 +80,10 @@ event EmergencyWithdrawal(address indexed token, uint256 amount);
 event ContractPaused();
 
 event ContractUnpaused();
+
+event FundingAdded(
+    uint256 indexed id,
+    address indexed participant,
+    address indexed token,
+    uint256 amount
+);

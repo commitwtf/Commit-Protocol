@@ -458,7 +458,7 @@ contract CommitTest is Test {
         uint256 commitmentId = createCommitmentNative(userA, 100, 5);
         joinCommitmentNative(commitmentId, userB, 100);
 
-        commitProtocol.fund{value: 100}(commitmentId, 0);
+        commitProtocol.fund{value: 100}(commitmentId, 100, address(0));
         vm.warp(13);
 
         address[] memory winners = new address[](1);
@@ -466,12 +466,17 @@ contract CommitTest is Test {
         resolveCommitment(commitmentId);
 
         vm.startPrank(userB);
-
+        uint256 balanceBBefore = userB.balance;
         require(
-            commitProtocol.getClaims(commitmentId).winnerClaim == 99 + 99 + 100,
+            commitProtocol.getClaims(commitmentId).winnerClaim == 99 + 99,
             "Invalid Reward"
-        ); // 99 = stake refund, 99 = earnings, 100 = funding
+        ); // 99 = stake refund, 99 = earnings
         commitProtocol.claimRewards(tokenId1, merkleProof);
+        uint256 balanceBAfter = userB.balance;
+        require(
+            balanceBAfter - balanceBBefore == (99 + 99 + 100),
+            "Fee not credited"
+        ); // 99 = stake refund, 49 = earnings - creatorShare
 
         vm.stopPrank();
     }
@@ -482,7 +487,7 @@ contract CommitTest is Test {
         joinCommitmentNative(commitmentId, userB, 100);
         joinCommitmentNative(commitmentId, userC, 100);
 
-        commitProtocol.fund{value: 100}(commitmentId, 0);
+        commitProtocol.fund{value: 100}(commitmentId, 100, address(0));
 
         vm.warp(13);
 
@@ -492,16 +497,15 @@ contract CommitTest is Test {
         uint256 balanceBBefore = userB.balance;
 
         require(
-            commitProtocol.getClaims(commitmentId).winnerClaim ==
-                99 + 198 + 100,
+            commitProtocol.getClaims(commitmentId).winnerClaim == 99 + 198,
             "Invalid Reward"
         );
 
         commitProtocol.claimRewards(tokenId1, merkleProof);
         uint256 balanceBAfter = userB.balance;
-
-        require(
-            balanceBAfter - balanceBBefore == (99 + 198 + 100),
+        assertEq(
+            balanceBAfter - balanceBBefore,
+            99 + 198 + 100,
             "Fee not credited"
         ); // 99 = stake refund, 49 = earnings - creatorShare, 100 = funding
 
@@ -512,24 +516,24 @@ contract CommitTest is Test {
         uint256 commitmentId = createCommitmentNative(userA, 100, 5);
         joinCommitmentNative(commitmentId, userB, 100);
 
-        commitProtocol.fund{value: 100}(commitmentId, 0);
+        commitProtocol.fund{value: 100}(commitmentId, 100, address(0));
 
         vm.warp(13);
 
-        commitProtocol.removeFunding(commitmentId, 100);
+        commitProtocol.removeFunding(commitmentId, 100, address(0));
     }
 
     function testRemoveFundingRevertWhenCommitmentIsResolved() public {
         uint256 commitmentId = createCommitmentNative(userA, 100, 5);
         joinCommitmentNative(commitmentId, userB, 100);
 
-        commitProtocol.fund{value: 100}(commitmentId, 0);
+        commitProtocol.fund{value: 100}(commitmentId, 100, address(0));
 
         vm.warp(13);
 
         resolveCommitment(commitmentId);
 
         vm.expectRevert(abi.encodeWithSignature("CommitmentNotActive()"));
-        commitProtocol.removeFunding(commitmentId, 100);
+        commitProtocol.removeFunding(commitmentId, 100, address(0));
     }
 }

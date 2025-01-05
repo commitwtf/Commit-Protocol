@@ -29,11 +29,14 @@ contract Storage {
         uint256 winnerClaim; // Amount each winner can claim
         uint256 creatorClaim; // Total amount creator can claim
         uint256 creatorClaimed; // Amount creator has already claimed
+        uint256 winnerCount; // Number of winners
         bytes32 root; // Merkle root of the winners
     }
 
     struct CommitmentParticipants {
         mapping(uint256 => bool) nftsClaimed; // Tracking if a participant has claimed
+        mapping(address => mapping(address => uint256)) publicFunding;
+        mapping(address => uint256) tokenFunding;
     }
 
     /// @notice Represents a single commitment with its rules and state
@@ -74,7 +77,6 @@ contract Storage {
     mapping(uint256 => Commitment) internal commitments;
     mapping(address => uint256) public protocolFees;
     mapping(uint256 => uint256) public commitmentTokenCount;
-    mapping(address => mapping(uint256 => uint256)) publicFunding;
     mapping(address => Client) public clients;
     EnumerableSet.AddressSet internal allowedTokens;
     address public disperseContract;

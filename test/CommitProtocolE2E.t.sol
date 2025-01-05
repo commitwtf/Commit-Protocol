@@ -170,7 +170,7 @@ contract CommitTest is Test {
         vm.startPrank(userD);
         testToken.deal(50);
         testToken.approve(address(commitProtocol), 50);
-        commitProtocol.fund(commitmentId, 50);
+        commitProtocol.fund(commitmentId, 50, address(testToken));
         vm.stopPrank();
 
         // 4. Time passes, commitment is fulfilled and resolved
@@ -213,7 +213,7 @@ contract CommitTest is Test {
 
         // 3. Someone adds funding
         vm.startPrank(userD);
-        commitProtocol.fund{value: 50}(commitmentId, 0);
+        commitProtocol.fund{value: 50}(commitmentId, 50, address(0));
         vm.stopPrank();
 
         // 4. Time passes, commitment is fulfilled and resolved
@@ -256,7 +256,7 @@ contract CommitTest is Test {
         vm.startPrank(userD);
         testToken.deal(50);
         testToken.approve(address(commitProtocol), 50);
-        commitProtocol.fund(commitmentId, 50);
+        commitProtocol.fund(commitmentId, 50, address(testToken));
         vm.stopPrank();
 
         // 4. Creator cancels commitment
@@ -275,7 +275,7 @@ contract CommitTest is Test {
         // 6. Funder can remove their funding
         vm.startPrank(userD);
         uint256 funderBalanceBefore = testToken.balanceOf(userD);
-        commitProtocol.removeFunding(commitmentId, 50);
+        commitProtocol.removeFunding(commitmentId, 50, address(testToken));
         uint256 funderBalanceAfter = testToken.balanceOf(userD);
         assertEq(funderBalanceAfter - funderBalanceBefore, 50);
         vm.stopPrank();

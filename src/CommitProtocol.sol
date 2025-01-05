@@ -478,6 +478,19 @@ contract CommitProtocol is
             IERC20(commitment.info.tokenAddress).transfer(msg.sender, amount);
         }
 
+        msg.sender.call{
+            value: commitment.participants.tokenFunding[address(0)] /
+                commitment.claims.winnerCount
+        }("");
+        for (uint256 i = 0; i < allowedTokens.length(); i++) {
+            address tokenAddress = allowedTokens.at(i);
+            IERC20(tokenAddress).transfer(
+                msg.sender,
+                commitment.participants.tokenFunding[tokenAddress] /
+                    commitment.claims.winnerCount
+            );
+        }
+
         emit RewardsClaimed(
             _id,
             msg.sender,
@@ -526,36 +539,64 @@ contract CommitProtocol is
     /// @notice Allows public funding of a commitment
     /// @param _id The commitment ID to fund
     /// @param _amount The amount of tokens to fund
-    function fund(uint256 _id, uint256 _amount) external payable {
+    function fund(
+        uint256 _id,
+        uint256 _amount,
+        address _tokenAddress
+    ) external payable {
         CommitmentInfo memory commitment = commitments[_id].info;
         if (commitment.status != CommitmentStatus.Active) {
             revert CommitmentNotActive();
         }
+        if (
+            _tokenAddress != address(0) &&
+            !allowedTokens.contains(_tokenAddress)
+        ) {
+            revert InvalidTokenAddress();
+        }
 
-        if (commitment.tokenAddress == address(0)) {
-            publicFunding[msg.sender][_id] += msg.value;
-            commitment.funding += msg.value;
+        if (_tokenAddress == address(0)) {
+            if (msg.value != _amount) {
+                revert InvalidFundingAmount();
+            }
+            commitments[_id].participants.publicFunding[msg.sender][
+                address(0)
+            ] += _amount;
+            commitment.funding += _amount;
         } else {
-            IERC20(commitment.tokenAddress).transferFrom(
+            IERC20(_tokenAddress).transferFrom(
                 msg.sender,
                 address(this),
                 _amount
             );
-            publicFunding[msg.sender][_id] += _amount;
+            commitments[_id].participants.publicFunding[msg.sender][
+                _tokenAddress
+            ] += _amount;
             commitment.funding += _amount;
         }
         commitments[_id].info = commitment;
+        commitments[_id].participants.tokenFunding[_tokenAddress] += _amount;
+        emit FundingAdded(_id, msg.sender, _tokenAddress, _amount);
     }
 
     /// @notice Allows removal of public funding from a commitment
     /// @param _id The commitment ID to remove funding from
     /// @param _amount The amount of tokens to remove
-    function removeFunding(uint256 _id, uint256 _amount) external payable {
+    function removeFunding(
+        uint256 _id,
+        uint256 _amount,
+        address _tokenAddress
+    ) external payable {
         CommitmentInfo memory commitment = commitments[_id].info;
+
         if (commitment.status == CommitmentStatus.Resolved) {
             revert CommitmentNotActive();
         }
-        if (publicFunding[msg.sender][_id] < _amount) {
+        if (
+            commitments[_id].participants.publicFunding[msg.sender][
+                _tokenAddress
+            ] < _amount
+        ) {
             revert InvalidFundingAmount();
         }
         commitment.funding -= _amount;
@@ -565,10 +606,13 @@ contract CommitProtocol is
                 revert NativeTokenTransferFailed();
             }
         } else {
-            IERC20(commitment.tokenAddress).transfer(msg.sender, _amount);
+            IERC20(_tokenAddress).transfer(msg.sender, _amount);
         }
         commitments[_id].info = commitment;
-        publicFunding[msg.sender][_id] -= _amount;
+        commitments[_id].participants.publicFunding[msg.sender][
+            _tokenAddress
+        ] -= _amount;
+        commitments[_id].participants.tokenFunding[_tokenAddress] -= _amount;
     }
 
     /// @notice Internal function to resolve a commitment and calculate winner rewards
@@ -608,18 +652,20 @@ contract CommitProtocol is
         uint256 winnerStakeRefund = commitment.info.stakeAmount -
             protocolStakeFee;
         uint256 winnerStakeEarnings = ((commitment.info.stakeAmount -
-            protocolStakeFee) *
-            failedCount +
-            commitment.info.funding) / _winnerCount;
+            protocolStakeFee) * failedCount) / _winnerCount;
 
         commitment.claims.winnerClaim = winnerStakeRefund + winnerStakeEarnings;
+        commitment.claims.winnerCount = _winnerCount;
 
         // Mark commitment as resolved
         commitment.info.status = CommitmentStatus.Resolved;
 
         emit CommitmentResolved(_id, _winnerCount);
     }
-
+    /// @notice Registers a new frontend client that can create commitments on behalf of users
+    /// @param _clientWithdrawAddress Address where the client's fee share will be sent
+    /// @param _clientFee Fee percentage (in basis points) that the client will receive from commitments
+    /// @dev The client address is set to msg.sender
     function addClient(
         address _clientWithdrawAddress,
         uint256 _clientFee
@@ -632,6 +678,9 @@ contract CommitProtocol is
         emit ClientAdded(msg.sender);
     }
 
+    /// @notice Removes a frontend client's registration
+    /// @param _client Address of the client to remove
+    /// @dev Only the client itself can remove its registration
     function removeClient(address _client) external {
         if (clients[_client].clientAddress != msg.sender) {
             revert OnlyClientCanRemove();
@@ -640,6 +689,10 @@ contract CommitProtocol is
         emit ClientRemoved(_client);
     }
 
+    /// @notice Updates a frontend client's withdrawal address and fee percentage
+    /// @param _clientWithdrawAddress New address where the client's fee share will be sent
+    /// @param _clientFee New fee percentage (in basis points) that the client will receive
+    /// @dev The client address remains unchanged as msg.sender
     function updateClient(
         address _clientWithdrawAddress,
         uint256 _clientFee
