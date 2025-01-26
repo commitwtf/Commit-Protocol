@@ -17,7 +17,8 @@ import "./logger.sol";
 /// @title CommitProtocol — an onchain accountability protocol
 /// @notice Enables users to create and participate in commitment-based challenges
 /// @dev Implements stake management, fee distribution, and emergency controls
-/// @author Rachit Anand Srivastava (@privacy_prophet)
+/// @author Rev Miller (@revmiller), Rachit Anand Srivastava (@privacy_prophet)
+/// @custom: contributors: Carl Barrdahl (@carlbarrdahl), Carlo Miguel Dy (carlomigueldy), kompreni (@chejazi)
 contract CommitProtocol is
     UUPSUpgradeable,
     ReentrancyGuardUpgradeable,
